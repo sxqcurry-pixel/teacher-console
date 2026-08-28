@@ -1,0 +1,12 @@
+# Netlify 部署配置 — 此文件位于 Next.js 项目目录 apps/web 内。
+# Netlify UI 里 Base directory 设为 apps/web，构建时工作目录即此处，
+# Next.js 官方运行时自动定位 .next，不会再出现 apps/web/apps/web 路径重复。
+# 浏览器走同源 /api/v1，由 Next rewrite（build 时读 BACKEND_URL）服务端代理到 Railway，无 CORS。
+
+[build]
+  command = "pnpm --filter @spark/shared run build && pnpm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  PNPM_VERSION = "10"
+  NEXT_TELEMETRY_DISABLED = "1"
