@@ -29,11 +29,11 @@ WORKDIR /workspace/apps/api
 RUN pnpm exec prisma generate 2>&1 | tail -5
 RUN echo "=== Running nest build ===" && pnpm run build 2>&1 | tail -20
 
-# VERIFY build output exists — fail fast if missing
-RUN echo "=== Verifying dist ===" && ls -la dist/ && test -f dist/main.js || (echo "FATAL: dist/main.js not found!" && exit 1)
+# VERIFY build output — nest build with tsconfig paths aliases produces nested dirs
+RUN echo "=== Verifying dist ===" && find dist -name "main.js" -type f && ls -la dist/apps/api/src/main.js
 
 EXPOSE 3000
 ENTRYPOINT ["/sbin/tini", "--"]
 
-# Startup: push schema, seed, run
-CMD ["sh", "-c", "cd /workspace/apps/api && echo '=== Pushing schema ===' && pnpm exec prisma db push --skip-generate 2>&1 | tail -5 && echo '=== Seeding ===' && pnpm db:seed 2>&1 | tail -5 || echo 'seed skipped' && echo '=== Starting NestJS ===' && exec node dist/main.js"]
+# Startup: push schema, seed, run (correct path: dist/apps/api/src/main.js)
+CMD ["sh", "-c", "cd /workspace/apps/api && echo '=== Pushing schema ===' && pnpm exec prisma db push --skip-generate 2>&1 | tail -5 && echo '=== Seeding ===' && pnpm db:seed 2>&1 | tail -5 || echo 'seed skipped' && echo '=== Starting NestJS ===' && exec node dist/apps/api/src/main.js"]
