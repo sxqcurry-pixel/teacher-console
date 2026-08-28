@@ -51,7 +51,7 @@ pnpm db:seed 2>&1 | tail -3 || echo "Seed skipped"
 echo "=== main.js check ==="
 ls -la dist/main.js || echo "WARNING: main.js missing!"
 
-echo "=== Starting NestJS on 4000 ==="
+echo "=== Starting NestJS on port ${PORT} ==="
 exec node dist/main.js
 STARTSCRIPT
 RUN chmod +x /start.sh
