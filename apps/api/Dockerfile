@@ -60,6 +60,24 @@ WORKDIR /app/apps/api
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --prod --ignore-scripts --frozen-lockfile 2>/dev/null || true
 
+# --------------------------------------------------------------------------
+# 启动流程（entrypoint.sh）：
+#   1. prisma migrate deploy   —— 从 prisma/migrations 建表/升级（幂等）
+#   2. tsx prisma/seed.ts       —— 灌 demo teacher（存在即跳过）
+#   3. node dist/main.js        —— NestJS 启动监听 PORT
+# --------------------------------------------------------------------------
+RUN printf '%s\n' \
+    '#!/bin/sh' \
+    'set -e' \
+    'echo "[entrypoint] pushing schema to database (prisma db push)..."' \
+    'pnpm prisma db push --skip-generate' \
+    'echo "[entrypoint] running seed..."' \
+    'pnpm db:seed || echo "[entrypoint] seed skipped"' \
+    'echo "[entrypoint] starting NestJS..."' \
+    'exec node dist/main.js' \
+    > /app/apps/api/entrypoint.sh \
+    && chmod +x /app/apps/api/entrypoint.sh
+
 EXPOSE 4000
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "dist/main.js"]
+CMD ["/app/apps/api/entrypoint.sh"]
