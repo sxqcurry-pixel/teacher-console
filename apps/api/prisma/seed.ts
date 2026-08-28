@@ -4,7 +4,7 @@
  * enough to showcase the dashboard & CRUD flows without external data.
  */
 import { PrismaClient, Role, StudentStatus } from '@prisma/client';
-import bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
