@@ -72,6 +72,9 @@ model Student {
   points         Point[]
   communications Communication[]
 
+  auctionWins  Auction[]    @relation("AuctionWinner")
+  auctionBids  AuctionBid[]
+
   @@unique([classId, serialNo])
   @@index([classId, status])
   @@map("students")
@@ -161,7 +164,7 @@ model Auction {
   startingPrice Int
   currentPrice  Int         @default(0)
   winnerId    String?
-  winner      Student?      @relation(fields: [winnerId], references: [id])
+  winner      Student?      @relation("AuctionWinner", fields: [winnerId], references: [id])
   status      AuctionStatus @default(OPEN)
   expiresAt   DateTime
   createdAt   DateTime      @default(now())
