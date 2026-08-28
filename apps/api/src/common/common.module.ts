@@ -15,16 +15,14 @@ import { DomainEventBus } from './domain-event/domain-event-bus.service';
 @Global()
 @Module({
   imports: [
-    {
-      ...JwtModule.registerAsync({
-        useFactory: (cfg: ConfigType<typeof jwtConfig>) => ({
-          secret: cfg.secret,
-          signOptions: { expiresIn: cfg.accessTtl },
-        }),
-        inject: [jwtConfig.KEY],
-      }),
+    JwtModule.registerAsync({
       global: true,
-    },
+      useFactory: (cfg: ConfigType<typeof jwtConfig>) => ({
+        secret: cfg.secret,
+        signOptions: { expiresIn: cfg.accessTtl },
+      }),
+      inject: [jwtConfig.KEY],
+    }),
   ],
   providers: [
     JwtAuthGuard,
