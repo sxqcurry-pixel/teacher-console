@@ -32,7 +32,7 @@ RUN echo "=== Running nest build ===" && pnpm run build 2>&1 | tail -10
 # VERIFY build output — find correct main.js path
 RUN echo "=== Verifying dist ===" && find dist -name "main.js" -type f
 
-EXPOSE 3000
+EXPOSE 4000
 ENTRYPOINT ["/sbin/tini", "--"]
 
 # Startup: push schema, seed, run

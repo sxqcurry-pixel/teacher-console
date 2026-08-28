@@ -1,11 +1,8 @@
-# Railway 部署配置 — 后端 NestJS API
-# 文档：https://docs.railway.app/deploy/config-as-code
-
 [build]
 builder = "dockerfile"
 dockerfilePath = "apps/api/Dockerfile"
 
 [deploy]
-port = 3000
+port = 4000
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
