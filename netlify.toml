@@ -1,0 +1,14 @@
+# Netlify 部署配置 — Spark Teacher Workspace (Next.js monorepo)
+# 前端在 apps/web，依赖 packages/shared。浏览器走同源 /api/v1，
+# 由 Next rewrite（build 时读 BACKEND_URL）服务端代理到 Railway，无 CORS。
+
+[build]
+  base = "apps/web"
+  command = "pnpm --filter @spark/shared run build && pnpm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  PNPM_VERSION = "10"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+# Netlify 自动检测 Next.js 并启用官方 Next runtime（支持 app router 与 rewrites），无需手动声明插件。
