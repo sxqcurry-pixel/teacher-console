@@ -19,7 +19,7 @@ COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 
 # Install deps — DO NOT use --ignore-scripts (express/nest deps need postinstall!)
-RUN pnpm install --frozen-lockfile 2>&1 | tail -10
+RUN pnpm install --frozen-lockfile --shamefully-hoist 2>&1 | tail -10
 
 # Build shared lib first (api depends on @spark/shared)
 RUN cd packages/shared && pnpm run build 2>&1 | tail -3 || echo "shared build skip"
