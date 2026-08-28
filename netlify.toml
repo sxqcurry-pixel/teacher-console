@@ -1,6 +1,6 @@
-# Netlify 部署配置 — 放在仓库根目录，不设 base。
-# Netlify 在仓库根目录安装 pnpm workspace 依赖，再用命令显式构建 shared 包和 web。
-# 浏览器走同源 /api/v1，由 Netlify 原生 proxy redirect（status=200）原样转发 POST/请求体到 Railway，无 CORS。
+# Netlify 部署配置 — 仓库根目录，不设 base。
+# /api/v1/* 由 Next.js catch-all route handler（src/app/api/v1/[...path]/route.ts）
+# 在服务端显式代理到 Railway（读 BACKEND_URL），原样转发方法/请求体/认证头，无 CORS。
 
 [build]
   command = "pnpm --filter @spark/shared run build && pnpm --filter web run build"
@@ -10,10 +10,3 @@
   NODE_VERSION = "20"
   PNPM_VERSION = "10"
   NEXT_TELEMETRY_DISABLED = "1"
-
-# Netlify 平台级反向代理：在 Next.js 函数之前命中，原样转发方法与请求体到 Railway。
-[[redirects]]
-  from = "/api/v1/*"
-  to = "https://satisfied-reflection-production.up.railway.app/api/v1/:splat"
-  status = 200
-  force = true
