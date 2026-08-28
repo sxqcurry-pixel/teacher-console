@@ -1,0 +1,15 @@
+# Railway 部署配置 — 后端 NestJS API
+# 文档：https://docs.railway.app/deploy/config-as-code
+# ------------------------------------------------------------------
+# Railway 会读取此文件，用仓库根作为 build context，执行 apps/api/Dockerfile。
+# Dockerfile 会：pnpm install → prisma generate → nest build → node dist/main.js
+# 端口：main.ts 优先读 API_PORT，其次读 Railway 注入的 PORT，默认 3001。
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "apps/api/Dockerfile"
+
+[deploy]
+# Railway 自动注入 PORT，main.ts 已兼容；若手动设 API_PORT 则覆盖
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

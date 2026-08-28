@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preflight</title>
+    <style id="theme-vars">
+/* Spark Teacher Workspace — 橙光暗金设计令牌 */
+
+:root {
+  /* Brand primary — warm orange */
+  --spark-orange-50: #fff7ed;
+  --spark-orange-100: #ffedd5;
+  --spark-orange-200: #fed7aa;
+  --spark-orange-300: #fdba74;
+  --spark-orange-400: #fb923c;
+  --spark-orange-500: #f97316;
+  --spark-orange-600: #ea580c;
+  --spark-orange-700: #c2410c;
+  --spark-orange-800: #9a3412;
+  --spark-orange-900: #7c2d12;
+
+  /* Neutral scale — dark premium */
+  --spark-neutral-0: #ffffff;
+  --spark-neutral-50: #fafafa;
+  --spark-neutral-100: #f4f4f5;
+  --spark-neutral-200: #e4e4e7;
+  --spark-neutral-300: #d4d4d8;
+  --spark-neutral-400: #a1a1aa;
+  --spark-neutral-500: #71717a;
+  --spark-neutral-600: #52525b;
+  --spark-neutral-700: #3f3f46;
+  --spark-neutral-800: #27272a;
+  --spark-neutral-900: #18181b;
+  --spark-neutral-950: #0f0f11;
+
+  /* Semantic tokens */
+  --spark-background: #0f0f11;
+  --spark-foreground: #f4f4f5;
+  --spark-card: #17171a;
+  --spark-card-foreground: #f4f4f5;
+  --spark-popover: #1c1c20;
+  --spark-popover-foreground: #f4f4f5;
+  --spark-primary: #f97316;
+  --spark-primary-foreground: #ffffff;
+  --spark-muted: #27272a;
+  --spark-muted-foreground: #a1a1aa;
+  --spark-border: rgba(255, 255, 255, 0.08);
+  --spark-input: rgba(255, 255, 255, 0.1);
+  --spark-ring: rgba(249, 115, 22, 0.5);
+  --spark-radius-small: 4px;
+  --spark-radius-medium: 8px;
+  --spark-radius-large: 12px;
+
+  /* State colors */
+  --spark-state-success: #22c55e;
+  --spark-state-warning: #eab308;
+  --spark-state-error: #ef4444;
+  --spark-state-info: #3b82f6;
+
+  /* Glow & gradient accents */
+  --spark-glow-primary: rgba(249, 115, 22, 0.25);
+  --spark-glow-soft: rgba(249, 115, 22, 0.1);
+  --spark-gradient-hero: linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(15, 15, 17, 0) 55%);
+  --spark-gradient-card: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 100%);
+
+  /* Typography */
+  --spark-font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --spark-font-mono: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
+
+  /* Spacing scale */
+  --spark-space-1: 4px;
+  --spark-space-2: 8px;
+  --spark-space-3: 12px;
+  --spark-space-4: 16px;
+  --spark-space-5: 20px;
+  --spark-space-6: 24px;
+  --spark-space-8: 32px;
+  --spark-space-10: 40px;
+  --spark-space-12: 48px;
+}
+
+/* Typography classes */
+.spark-text-xs { font-size: 12px; line-height: 16px; }
+.spark-text-sm { font-size: 14px; line-height: 20px; }
+.spark-text-base { font-size: 16px; line-height: 24px; }
+.spark-text-lg { font-size: 18px; line-height: 28px; }
+.spark-text-xl { font-size: 20px; line-height: 30px; }
+.spark-text-2xl { font-size: 24px; line-height: 32px; }
+.spark-text-3xl { font-size: 30px; line-height: 36px; }
+.spark-text-4xl { font-size: 36px; line-height: 40px; }
+
+.spark-font-normal { font-weight: 400; }
+.spark-font-medium { font-weight: 500; }
+.spark-font-semibold { font-weight: 600; }
+.spark-font-bold { font-weight: 700; }
+
+/* Utility surface classes */
+.spark-surface { background: var(--spark-card); border: 1px solid var(--spark-border); }
+.spark-glass {
+  background: rgba(23, 23, 26, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.spark-glow {
+  box-shadow: 0 0 24px var(--spark-glow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Animation helpers */
+@keyframes spark-fade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes spark-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(249, 115, 22, 0); }
+}
+@keyframes spark-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spark-animate-fade-in { animation: spark-fade-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.spark-animate-pulse { animation: spark-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+.spark-animate-spin { animation: spark-spin 1s linear infinite; }
+
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.3.1/dist/index.global.js"></script>
+    <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <style type="text/tailwindcss">
+  @theme inline {
+    --color-background: var(--spark-background);
+    --color-foreground: var(--spark-foreground);
+    --color-card: var(--spark-card);
+    --color-card-foreground: var(--spark-card-foreground);
+    --color-popover: var(--spark-popover);
+    --color-popover-foreground: var(--spark-popover-foreground);
+    --color-primary: var(--spark-primary);
+    --color-primary-foreground: var(--spark-primary-foreground);
+    --color-muted: var(--spark-muted);
+    --color-muted-foreground: var(--spark-muted-foreground);
+    --color-border: var(--spark-border);
+    --color-input: var(--spark-input);
+    --color-ring: var(--spark-ring);
+    --radius-sm: var(--spark-radius-small);
+    --radius-md: var(--spark-radius-medium);
+    --radius-lg: var(--spark-radius-large);
+  }
+  @layer base {
+    body { background: var(--spark-background); color: var(--spark-foreground); }
+    td, th { @apply break-words; word-break: break-all; word-break: auto-phrase; }
+    th { @apply whitespace-nowrap; }
+  }
+    </style>
+    <style id="semantic-token-fallback">
+      .bg-background { background-color: var(--spark-background); }
+      .text-background { color: var(--spark-background); }
+      .border-background { border-color: var(--spark-background); }
+      .ring-background { --tw-ring-color: var(--spark-background); }
+      .bg-foreground { background-color: var(--spark-foreground); }
+      .text-foreground { color: var(--spark-foreground); }
+      .border-foreground { border-color: var(--spark-foreground); }
+      .ring-foreground { --tw-ring-color: var(--spark-foreground); }
+      .bg-card { background-color: var(--spark-card); }
+      .text-card { color: var(--spark-card); }
+      .border-card { border-color: var(--spark-card); }
+      .ring-card { --tw-ring-color: var(--spark-card); }
+      .bg-card-foreground { background-color: var(--spark-card-foreground); }
+      .text-card-foreground { color: var(--spark-card-foreground); }
+      .border-card-foreground { border-color: var(--spark-card-foreground); }
+      .ring-card-foreground { --tw-ring-color: var(--spark-card-foreground); }
+      .bg-popover { background-color: var(--spark-popover); }
+      .text-popover { color: var(--spark-popover); }
+      .border-popover { border-color: var(--spark-popover); }
+      .ring-popover { --tw-ring-color: var(--spark-popover); }
+      .bg-popover-foreground { background-color: var(--spark-popover-foreground); }
+      .text-popover-foreground { color: var(--spark-popover-foreground); }
+      .border-popover-foreground { border-color: var(--spark-popover-foreground); }
+      .ring-popover-foreground { --tw-ring-color: var(--spark-popover-foreground); }
+      .bg-primary { background-color: var(--spark-primary); }
+      .text-primary { color: var(--spark-primary); }
+      .border-primary { border-color: var(--spark-primary); }
+      .ring-primary { --tw-ring-color: var(--spark-primary); }
+      .bg-primary-foreground { background-color: var(--spark-primary-foreground); }
+      .text-primary-foreground { color: var(--spark-primary-foreground); }
+      .border-primary-foreground { border-color: var(--spark-primary-foreground); }
+      .ring-primary-foreground { --tw-ring-color: var(--spark-primary-foreground); }
+      .bg-muted { background-color: var(--spark-muted); }
+      .text-muted { color: var(--spark-muted); }
+      .border-muted { border-color: var(--spark-muted); }
+      .ring-muted { --tw-ring-color: var(--spark-muted); }
+      .bg-muted-foreground { background-color: var(--spark-muted-foreground); }
+      .text-muted-foreground { color: var(--spark-muted-foreground); }
+      .border-muted-foreground { border-color: var(--spark-muted-foreground); }
+      .ring-muted-foreground { --tw-ring-color: var(--spark-muted-foreground); }
+      .bg-border { background-color: var(--spark-border); }
+      .text-border { color: var(--spark-border); }
+      .border-border { border-color: var(--spark-border); }
+      .ring-border { --tw-ring-color: var(--spark-border); }
+      .bg-input { background-color: var(--spark-input); }
+      .text-input { color: var(--spark-input); }
+      .border-input { border-color: var(--spark-input); }
+      .ring-input { --tw-ring-color: var(--spark-input); }
+      .bg-ring { background-color: var(--spark-ring); }
+      .text-ring { color: var(--spark-ring); }
+      .border-ring { border-color: var(--spark-ring); }
+      .ring-ring { --tw-ring-color: var(--spark-ring); }
+    </style>
+    <style>
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      [data-icon] {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        background-color: currentColor;
+      }
+    </style>
+</head>
+<body class="min-h-screen font-sans antialiased">
+    <main>
+    </main>
+    <script>lucide.createIcons();</script>
+</body>
+</html>

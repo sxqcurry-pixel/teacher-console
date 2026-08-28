@@ -1,0 +1,119 @@
+/* Spark Teacher Workspace — 橙光暗金设计令牌 */
+
+:root {
+  /* Brand primary — warm orange */
+  --spark-orange-50: #fff7ed;
+  --spark-orange-100: #ffedd5;
+  --spark-orange-200: #fed7aa;
+  --spark-orange-300: #fdba74;
+  --spark-orange-400: #fb923c;
+  --spark-orange-500: #f97316;
+  --spark-orange-600: #ea580c;
+  --spark-orange-700: #c2410c;
+  --spark-orange-800: #9a3412;
+  --spark-orange-900: #7c2d12;
+
+  /* Neutral scale — dark premium */
+  --spark-neutral-0: #ffffff;
+  --spark-neutral-50: #fafafa;
+  --spark-neutral-100: #f4f4f5;
+  --spark-neutral-200: #e4e4e7;
+  --spark-neutral-300: #d4d4d8;
+  --spark-neutral-400: #a1a1aa;
+  --spark-neutral-500: #71717a;
+  --spark-neutral-600: #52525b;
+  --spark-neutral-700: #3f3f46;
+  --spark-neutral-800: #27272a;
+  --spark-neutral-900: #18181b;
+  --spark-neutral-950: #0f0f11;
+
+  /* Semantic tokens */
+  --spark-background: #0f0f11;
+  --spark-foreground: #f4f4f5;
+  --spark-card: #17171a;
+  --spark-card-foreground: #f4f4f5;
+  --spark-popover: #1c1c20;
+  --spark-popover-foreground: #f4f4f5;
+  --spark-primary: #f97316;
+  --spark-primary-foreground: #ffffff;
+  --spark-muted: #27272a;
+  --spark-muted-foreground: #a1a1aa;
+  --spark-border: rgba(255, 255, 255, 0.08);
+  --spark-input: rgba(255, 255, 255, 0.1);
+  --spark-ring: rgba(249, 115, 22, 0.5);
+  --spark-radius-small: 4px;
+  --spark-radius-medium: 8px;
+  --spark-radius-large: 12px;
+
+  /* State colors */
+  --spark-state-success: #22c55e;
+  --spark-state-warning: #eab308;
+  --spark-state-error: #ef4444;
+  --spark-state-info: #3b82f6;
+
+  /* Glow & gradient accents */
+  --spark-glow-primary: rgba(249, 115, 22, 0.25);
+  --spark-glow-soft: rgba(249, 115, 22, 0.1);
+  --spark-gradient-hero: linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(15, 15, 17, 0) 55%);
+  --spark-gradient-card: linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0) 100%);
+
+  /* Typography */
+  --spark-font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --spark-font-mono: "SF Mono", "Fira Code", "JetBrains Mono", monospace;
+
+  /* Spacing scale */
+  --spark-space-1: 4px;
+  --spark-space-2: 8px;
+  --spark-space-3: 12px;
+  --spark-space-4: 16px;
+  --spark-space-5: 20px;
+  --spark-space-6: 24px;
+  --spark-space-8: 32px;
+  --spark-space-10: 40px;
+  --spark-space-12: 48px;
+}
+
+/* Typography classes */
+.spark-text-xs { font-size: 12px; line-height: 16px; }
+.spark-text-sm { font-size: 14px; line-height: 20px; }
+.spark-text-base { font-size: 16px; line-height: 24px; }
+.spark-text-lg { font-size: 18px; line-height: 28px; }
+.spark-text-xl { font-size: 20px; line-height: 30px; }
+.spark-text-2xl { font-size: 24px; line-height: 32px; }
+.spark-text-3xl { font-size: 30px; line-height: 36px; }
+.spark-text-4xl { font-size: 36px; line-height: 40px; }
+
+.spark-font-normal { font-weight: 400; }
+.spark-font-medium { font-weight: 500; }
+.spark-font-semibold { font-weight: 600; }
+.spark-font-bold { font-weight: 700; }
+
+/* Utility surface classes */
+.spark-surface { background: var(--spark-card); border: 1px solid var(--spark-border); }
+.spark-glass {
+  background: rgba(23, 23, 26, 0.72);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.spark-glow {
+  box-shadow: 0 0 24px var(--spark-glow-soft), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Animation helpers */
+@keyframes spark-fade-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes spark-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(249, 115, 22, 0); }
+}
+@keyframes spark-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spark-animate-fade-in { animation: spark-fade-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+.spark-animate-pulse { animation: spark-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+.spark-animate-spin { animation: spark-spin 1s linear infinite; }

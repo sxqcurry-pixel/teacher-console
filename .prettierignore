@@ -1,0 +1,10 @@
+node_modules
+dist
+.next
+build
+coverage
+.turbo
+pnpm-lock.yaml
+*.min.*
+public
+migrations

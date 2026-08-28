@@ -1,0 +1,121 @@
+# ==============================================================================
+#  Spark Teacher Hub — Production docker-compose (单主机 ECS / 单机服务器)
+# ------------------------------------------------------------------------------
+#  三档部署建议（与技术规范对应）：
+#   ① 轻量云上版： Railway 部署 API + Vercel 部署 Next，Postgres/Redis 用 Railway 托管
+#   ② 单主机 ECS 版： docker compose -f docker-compose.prod.yml up -d （本文件）
+#   ③ 高可用版： 数据库用阿里云 RDS / Redis 云服务，本文件去掉 db/redis 服务即可
+# ==============================================================================
+name: spark-teacher-prod
+
+services:
+  # ---------- PostgreSQL 16（数据持久化到独立 volume） ----------
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-spark}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me}
+      POSTGRES_DB: ${DB_NAME:-spark_teacher}
+    volumes:
+      - spark-teacher-pg-prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-spark} -d ${DB_NAME:-spark_teacher}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # 生产通常不对外暴露端口；如果需要外部连接可取消下一行注释
+    # ports: ["5432:5432"]
+
+  # ---------- Redis 7（Pub/Sub + 缓存） ----------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-change-me}"]
+    volumes:
+      - spark-teacher-redis-prod:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-change-me}", "--raw", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------- MinIO（可选，文件上传/素材库） ----------
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-sparkminio}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-change-me}
+    volumes:
+      - spark-teacher-minio-prod:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ---------- API (NestJS) ----------
+  api:
+    build:
+      context: ..
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      GLOBAL_PREFIX: /api/v1
+      JWT_SECRET: ${JWT_SECRET:-change-me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-me}
+      # DB
+      DATABASE_URL: postgresql://${DB_USER:-spark}:${DB_PASSWORD:-change-me}@db:5432/${DB_NAME:-spark_teacher}?schema=public
+      # Redis
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-change-me}
+      # S3 / MinIO
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET:-spark-teacher}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-sparkminio}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-change-me}
+      S3_FORCE_PATH_STYLE: "true"
+      # AI
+      AI_PROVIDER: ${AI_PROVIDER:-mock}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_MODEL: ${AI_MODEL:-}
+      # CORS
+      CORS_ORIGIN: ${WEB_PUBLIC_URL:-https://your-domain.com}
+    ports:
+      - "4000:4000"
+
+  # ---------- Web (Next.js standalone) ----------
+  web:
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-}
+      PORT: 3000
+    ports:
+      - "3000:3000"
+
+  # ---------- 可选：Nginx 反向代理（开启后把 web / api 都挂到 80 端口） ----------
+  # 如需域名 + HTTPS 请自行引入 Nginx Proxy Manager / Caddy / Traefik + ACME
+
+volumes:
+  spark-teacher-pg-prod:
+  spark-teacher-redis-prod:
+  spark-teacher-minio-prod:

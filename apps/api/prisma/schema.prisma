@@ -1,0 +1,276 @@
+// =============================================================================
+// Spark Teacher Workspace — Database Schema
+// Target: PostgreSQL 16+
+// Notes:
+//   - All enum values MUST stay in sync with packages/shared/src/enums/index.ts
+//   - Audit-sensitive fields: createdBy is reserved; timestamps use @updatedAt
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Auth & User ----------
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  /// bcrypt hash — NEVER expose via API
+  password  String
+  avatar    String?
+  role      Role     @default(TEACHER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  classes   Class[]
+  todos     Todo[]
+  materials Material[]
+
+  @@map("users")
+}
+
+enum Role {
+  TEACHER
+  ADMIN
+}
+
+// ---------- Class & Roster ----------
+
+model Class {
+  id        String    @id @default(cuid())
+  name      String
+  grade     String // e.g. "初二", "初三冲刺"
+  subject   String  // default "数学"
+  teacherId String
+  teacher   User      @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  students  Student[]
+  lessons   Lesson[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([teacherId])
+  @@map("classes")
+}
+
+model Student {
+  id        String        @id @default(cuid())
+  /// 班级内序号，导入时按 Excel 顺序
+  serialNo  Int
+  name      String
+  remark    String?
+  status    StudentStatus @default(ACTIVE)
+  classId   String
+  class     Class         @relation(fields: [classId], references: [id], onDelete: Cascade)
+
+  scores         Score[]
+  points         Point[]
+  communications Communication[]
+
+  @@unique([classId, serialNo])
+  @@index([classId, status])
+  @@map("students")
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  TRIAL
+}
+
+// ---------- Lesson & Score ----------
+
+model Lesson {
+  id        String  @id @default(cuid())
+  index     Int // 第 1..N 讲
+  title     String
+  fullScore Int     @default(30)
+  classId   String
+  class     Class   @relation(fields: [classId], references: [id], onDelete: Cascade)
+  scores    Score[]
+  points    Point[]
+
+  @@unique([classId, index])
+  @@map("lessons")
+}
+
+model Score {
+  id            String    @id @default(cuid())
+  studentId     String
+  student       Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lessonId      String?
+  lesson        Lesson?   @relation(fields: [lessonId], references: [id])
+  type          ScoreType
+  rawScore      Float?
+  /// STAGE_TEST: rawScore * 0.3; LESSON: = rawScore; 便于统一聚合
+  weightedScore Float?
+  rank          Int?
+  result        String? // "优秀" / "及格" / "待提升"
+  remark        String?
+  createdAt     DateTime  @default(now())
+
+  @@unique([studentId, lessonId, type])
+  // Note: cannot index relation field directly; join students when filtering by class.
+  @@index([studentId, createdAt])
+  @@index([lessonId, type])
+  @@map("scores")
+}
+
+enum ScoreType {
+  LESSON
+  STAGE_TEST
+}
+
+// ---------- Points & Auction ----------
+
+model Point {
+  id        String        @id @default(cuid())
+  studentId String
+  student   Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  lessonId  String?
+  lesson    Lesson?       @relation(fields: [lessonId], references: [id])
+  category  PointCategory
+  /// 本次增减分值（正/负）
+  score     Int
+  reason    String?
+  createdAt DateTime      @default(now())
+
+  @@index([studentId, createdAt])
+  @@index([lessonId])
+  @@map("points")
+}
+
+enum PointCategory {
+  ANSWER
+  TOP3
+  HOMEWORK_ON_TIME
+  HOMEWORK_QUALITY
+  NOTE_QUALITY
+  OTHER
+}
+
+model Auction {
+  id          String        @id @default(cuid())
+  title       String
+  description String?
+  startingPrice Int
+  currentPrice  Int         @default(0)
+  winnerId    String?
+  winner      Student?      @relation(fields: [winnerId], references: [id])
+  status      AuctionStatus @default(OPEN)
+  expiresAt   DateTime
+  createdAt   DateTime      @default(now())
+
+  bids        AuctionBid[]
+
+  @@index([status, expiresAt])
+  @@map("auctions")
+}
+
+model AuctionBid {
+  id        String  @id @default(cuid())
+  auctionId String
+  auction   Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  studentId String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  price     Int
+  createdAt DateTime @default(now())
+
+  @@index([auctionId, price])
+  @@map("auction_bids")
+}
+
+enum AuctionStatus {
+  OPEN
+  CLOSED
+}
+
+// ---------- Communication & Renewal ----------
+
+model Communication {
+  id            String        @id @default(cuid())
+  studentId     String
+  student       Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  type          CommType
+  content       String
+  followUp      String?
+  renewalStatus RenewalStatus?
+  createdAt     DateTime      @default(now())
+
+  @@index([studentId, createdAt])
+  @@map("communications")
+}
+
+enum CommType {
+  PHONE
+  WECHAT
+  FACE_TO_FACE
+}
+
+enum RenewalStatus {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// ---------- Todos ----------
+
+model Todo {
+  id        String      @id @default(cuid())
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  completed Boolean     @default(false)
+  dueDate   DateTime?
+  category  TodoCategory
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  @@index([userId, completed, dueDate])
+  @@map("todos")
+}
+
+enum TodoCategory {
+  LESSON_PREP
+  FOLLOW_UP
+  RENEWAL
+  ADMIN
+}
+
+// ---------- Material (备课素材 + pgvector embedding) ----------
+
+model Material {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  content   String
+  tags      String[] @default([])
+  /// pgvector 1536-dim embedding — require pgvector extension first
+  embedding Unsupported("vector(1536)")?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@map("materials")
+}
+
+// ---------- Wheel History ----------
+
+model WheelSpin {
+  id              String   @id @default(cuid())
+  classId         String
+  mode            String   // "STUDENT" | "PRIZE"
+  winnerLabel     String
+  winnerStudentId String?
+  payload         Json?    // full segments snapshot
+  createdAt       DateTime @default(now())
+
+  @@index([classId, createdAt])
+  @@map("wheel_spins")
+}

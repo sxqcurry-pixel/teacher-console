@@ -1,0 +1,174 @@
+/* ==========================================================================
+   Spark Teacher Workspace — 橙光暗金 (Orange & Dark Gold) Premium Theme
+   Design tokens mirrored from `colors_and_type.css` and converted to HSL
+   so Tailwind `bg-background text-foreground` + shadcn components work OOTB.
+   ========================================================================== */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Design tokens — convert brand hex to HSL to enable Tailwind alpha */
+    --spark-orange-50: 32 100% 96%;
+    --spark-orange-100: 32 100% 92%;
+    --spark-orange-200: 32 98% 83%;
+    --spark-orange-300: 30 97% 72%;
+    --spark-orange-400: 24 96% 61%;
+    --spark-orange-500: 25 95% 53%;   /* brand primary */
+    --spark-orange-600: 21 90% 48%;
+    --spark-orange-700: 18 89% 40%;
+    --spark-orange-800: 15 84% 34%;
+    --spark-orange-900: 12 81% 28%;
+
+    /* Semantic surface tokens */
+    --background: 240 10% 6%;     /* #0f0f11 */
+    --foreground: 240 6% 96%;     /* #f4f4f5 */
+    --card: 240 8% 10%;           /* #17171a */
+    --card-foreground: 240 6% 96%;
+    --popover: 240 7% 12%;        /* #1c1c20 */
+    --popover-foreground: 240 6% 96%;
+    --primary: 25 95% 53%;        /* f97316 */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 17%;
+    --secondary-foreground: 240 6% 96%;
+    --muted: 240 5% 15%;
+    --muted-foreground: 240 5% 64%;
+    --accent: 45 93% 47%;         /* dark-gold */
+    --accent-foreground: 0 0% 8%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 100% / 0.08;
+    --input: 0 0% 100% / 0.10;
+    --ring: 25 95% 53% / 0.5;
+    --radius: 12px;
+
+    /* State */
+    --success: 142 71% 45%;
+    --success-fg: 0 0% 8%;
+    --warning: 48 97% 48%;
+    --warning-fg: 40 20% 10%;
+    --error: 0 84% 60%;
+    --error-fg: 0 0% 100%;
+    --info: 217 91% 60%;
+    --info-fg: 0 0% 100%;
+  }
+
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html,
+  body {
+    background: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: theme('fontFamily.sans');
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+
+  /* Premium background layers — hero glow + subtle grid */
+  body.theme-premium::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(1200px 480px at 0% -10%, hsl(var(--primary) / 0.18), transparent 60%),
+      radial-gradient(800px 320px at 100% 0%, hsl(45 90% 55% / 0.12), transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  body.theme-premium::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(hsl(0 0% 100% / 0.025) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(0 0% 100% / 0.025) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: radial-gradient(circle at 50% 0%, #000 30%, transparent 75%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* Select color for tabular numbers */
+  .tabular, [data-number] { font-variant-numeric: tabular-nums; }
+
+  /* Scrollbar — premium dark */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.35);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--primary) / 0.55); background-clip: padding-box; border: 2px solid transparent; }
+}
+
+@layer components {
+  /* ---------- Surfaces ---------- */
+  .spark-surface {
+    background: hsl(var(--card));
+    border: 1px solid hsl(var(--border));
+    border-radius: var(--radius);
+    box-shadow: theme('boxShadow.card');
+  }
+
+  .spark-glass {
+    background: hsl(240 8% 10% / 0.72);
+    backdrop-filter: blur(16px) saturate(140%);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    border: 1px solid hsl(0 0% 100% / 0.08);
+    border-radius: var(--radius);
+  }
+
+  .spark-glow {
+    box-shadow: theme('boxShadow.glow');
+  }
+
+  .spark-glow-lg {
+    box-shadow: theme('boxShadow.glow-lg');
+  }
+
+  /* ---------- Typography accents ---------- */
+  .text-gradient-brand {
+    background: linear-gradient(135deg, hsl(25 95% 58%) 0%, hsl(45 93% 60%) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .spark-eyebrow {
+    @apply inline-flex items-center gap-2 text-[11px] uppercase tracking-[0.2em] text-primary/80;
+  }
+
+  .spark-h1 { @apply text-4xl md:text-5xl font-semibold tracking-tight; }
+  .spark-h2 { @apply text-2xl md:text-3xl font-semibold tracking-tight; }
+  .spark-h3 { @apply text-xl font-semibold tracking-tight; }
+
+  /* ---------- Utility button hover ---------- */
+  .spark-card-hover {
+    transition: transform 260ms cubic-bezier(.2,.8,.2,1), border-color 260ms, box-shadow 260ms;
+  }
+  .spark-card-hover:hover {
+    transform: translateY(-2px);
+    border-color: hsl(var(--primary) / 0.45);
+    box-shadow: theme('boxShadow.glow-lg');
+  }
+
+  /* ---------- Skeleton ---------- */
+  .spark-skeleton {
+    @apply rounded-md bg-muted/70;
+    background-image: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.06), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 2.2s linear infinite;
+  }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
