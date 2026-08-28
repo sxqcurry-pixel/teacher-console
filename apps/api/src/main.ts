@@ -7,7 +7,7 @@
  *   - Swagger (only when SWAGGER_ENABLED=true)
  *   - WebSocket upgrade via PlatformSocketIO adapter
  */
-import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -42,9 +42,8 @@ async function bootstrap() {
     exposedHeaders: ['Content-Disposition'],
   });
 
-  // ---- Global path prefix & versioning ----
+  // ---- Global path prefix (/api/v1 already includes version; no URI versioning to avoid /api/v1/v1) ----
   app.setGlobalPrefix(prefix);
-  app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
   // ---- Validation ----
   app.useGlobalPipes(
@@ -71,7 +70,6 @@ async function bootstrap() {
       .setDescription('Spark Teacher Workspace · commercial grade backend')
       .setVersion('1.0.0')
       .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'JWT')
-      .addServer(`http://localhost:${port}${prefix}`)
       .build();
     const document = SwaggerModule.createDocument(app, docConfig, {
       ignoreGlobalPrefix: false,
