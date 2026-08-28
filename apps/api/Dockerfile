@@ -1,6 +1,6 @@
 # ==============================================================
 # Teacher Console API — Production Dockerfile
-# Railway build: root context, via railway.toml dockerfilePath
+# Railway: root build context, dockerfilePath = apps/api/Dockerfile
 # ==============================================================
 FROM node:20-alpine
 
@@ -8,39 +8,32 @@ RUN apk add --no-cache git curl python3 make gcc g++ libc6-compat tini openssl b
 
 # pnpm
 ENV PNPM_HOME=/root/.local/share/pnpm
-ENV PATH=$PNPM_HOME:$PATH
+ENV PATH=/root/.local/share/pnpm:$PATH
 RUN corepack enable && corepack prepare pnpm@10.6.2 --activate
 
 WORKDIR /workspace
 
-# Copy manifest first
+# Copy ALL needed files from monorepo root context
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 
-# Install (allow lockfile drift on Railway — sometimes pnpm lock format differs)
-RUN pnpm install --no-frozen-lockfile --ignore-scripts 2>&1
+# Install deps (allow lock drift — Railway sometimes has mismatched lock format)
+RUN pnpm install --no-frozen-lockfile --ignore-scripts 2>&1 | tail -5
 
-# Build shared lib
-RUN pnpm --filter @spark/shared run build 2>&1 || echo "shared build fallback..." && cd packages/shared && npx tsc -p tsconfig.json 2>&1 || echo "shared skipped"
+# Build shared lib first (api depends on @spark/shared)
+RUN cd packages/shared && pnpm run build 2>&1 | tail -3 || echo "shared build skip"
 
-# Build API — use pnpm exec to ensure locked prisma version
+# Build API
 WORKDIR /workspace/apps/api
-RUN pnpm exec prisma generate 2>&1
-RUN pnpm run build 2>&1
+RUN pnpm exec prisma generate 2>&1 | tail -5
+RUN echo "=== Running nest build ===" && pnpm run build 2>&1 | tail -20
 
-# Entrypoint
-RUN printf '%s\n' \
-    '#!/bin/bash' \
-    'cd /workspace/apps/api' \
-    'echo "[entrypoint] pushing schema..."' \
-    'pnpm exec prisma db push --skip-generate' \
-    'echo "[entrypoint] seed..."' \
-    'pnpm db:seed || echo "seed skipped"' \
-    'echo "[entrypoint] starting NestJS..."' \
-    'exec node dist/main.js' \
-    > entrypoint.sh && chmod +x entrypoint.sh
+# VERIFY build output exists — fail fast if missing
+RUN echo "=== Verifying dist ===" && ls -la dist/ && test -f dist/main.js || (echo "FATAL: dist/main.js not found!" && exit 1)
 
 EXPOSE 3000
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["/workspace/apps/api/entrypoint.sh"]
+
+# Startup: push schema, seed, run
+CMD ["sh", "-c", "cd /workspace/apps/api && echo '=== Pushing schema ===' && pnpm exec prisma db push --skip-generate 2>&1 | tail -5 && echo '=== Seeding ===' && pnpm db:seed 2>&1 | tail -5 || echo 'seed skipped' && echo '=== Starting NestJS ===' && exec node dist/main.js"]
