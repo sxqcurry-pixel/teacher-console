@@ -32,7 +32,7 @@ RUN echo "=== Running nest build ===" && pnpm run build 2>&1 | tail -10
 # VERIFY build output — find correct main.js path
 RUN echo "=== Verifying dist ===" && find dist -name "main.js" -type f
 
-EXPOSE 4000
+EXPOSE 8080
 ENTRYPOINT ["/sbin/tini", "--"]
 
 # Startup script — EVERY step has fallback, NEVER exit before node runs
