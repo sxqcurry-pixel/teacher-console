@@ -1,30 +1,28 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import Redis from 'ioredis';
-import { REDIS_CLIENT } from '../../infrastructure/redis/redis.module';
+import { REDIS_CLIENT, PubSubClient } from '../../infrastructure/redis/redis.module';
 import { SyncGateway } from './sync.gateway';
 
 /**
- * Sync service — bridges Redis Pub/Sub events to connected WebSocket clients.
+ * Sync service — bridges pub/sub events to connected WebSocket clients.
+ *
+ * 有真 Redis 时跨实例广播；没 Redis 时走内存 EventEmitter（单进程够用）。
  *
  * Flow:
- *   1) DomainEventBus publishes payload → Redis channel `sync:class:xxx`
- *   2) This service subscribes and fans out to SyncGateway.broadcast()
- *   3) Clients receive SyncEnvelope and call `QueryClient.invalidateQueries()` + optimistic merge
+ *   1) DomainEventBus.publish(`sync:class:xxx`, payload)
+ *   2) 这里 psubscribe('sync:*') 收到 → SyncGateway.broadcast(room, envelope)
+ *   3) 前端收到后 invalidateQueries + 乐观合并
  */
 @Injectable()
 export class SyncService implements OnModuleInit {
   private readonly logger = new Logger(SyncService.name);
-  private readonly subscriber: Redis;
 
   constructor(
-    @Inject(REDIS_CLIENT) private readonly redis: Redis,
+    @Inject(REDIS_CLIENT) private readonly redis: PubSubClient,
     private readonly gateway: SyncGateway,
-  ) {
-    this.subscriber = redis.duplicate();
-  }
+  ) {}
 
   async onModuleInit() {
-    this.subscriber.on('pmessage', (_pattern, channel, message) => {
+    await this.redis.psubscribe?.('sync:*', (_pattern, channel, message) => {
       try {
         const event = JSON.parse(message);
         const channelName = channel.replace(/^sync:/, '');
@@ -43,7 +41,6 @@ export class SyncService implements OnModuleInit {
         this.logger.warn(`Failed to dispatch sync @ ${channel}: ${(e as Error).message}`);
       }
     });
-    await this.subscriber.psubscribe('sync:*');
     this.logger.log('Listening on sync:* channels for WebSocket fan-out', SyncService.name);
   }
 }
