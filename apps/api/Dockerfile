@@ -29,12 +29,13 @@ WORKDIR /workspace/apps/api
 RUN pnpm exec prisma generate 2>&1 | tail -5
 RUN echo "=== Running nest build ===" && pnpm run build 2>&1 | tail -10
 
-# VERIFY build output
+# VERIFY build output — find correct main.js path
 RUN echo "=== Verifying dist ===" && find dist -name "main.js" -type f
 
 EXPOSE 3000
 ENTRYPOINT ["/sbin/tini", "--"]
 
 # Startup: push schema, seed, run
-# Use pnpm start:prod so it resolves node_modules from workspace root correctly
-CMD ["sh", "-c", "cd /workspace/apps/api && echo '=== Pushing schema ===' && pnpm exec prisma db push --skip-generate 2>&1 | tail -5 && echo '=== Seeding ===' && pnpm db:seed 2>&1 | tail -5 || echo 'seed skipped' && echo '=== Starting NestJS ===' && exec pnpm exec nest start"]
+# main.ts reads process.env.PORT (Railway injects it) with fallback 3000
+# Correct main.js path: tsconfig paths aliases produce nested dirs
+CMD ["sh", "-c", "cd /workspace/apps/api && echo '=== Pushing schema ===' && pnpm exec prisma db push --skip-generate 2>&1 | tail -5 && echo '=== Seeding ===' && pnpm db:seed 2>&1 | tail -5 || echo 'seed skipped' && echo '=== Starting NestJS on PORT='${PORT} ===' && exec node dist/apps/api/src/main.js"]
