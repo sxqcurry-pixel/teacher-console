@@ -25,7 +25,7 @@ async function bootstrap() {
 
   const config = app.get(ConfigService);
   // API_PORT 优先（本地）；Railway/Vercel 注入的 PORT 自动兜底；都没设用 3001
-  const port = Number(process.env.PORT) || config.get<number>('API_PORT') || 4000;
+  const port = 3000; // Railway default incoming port
   const host = config.get<string>('API_HOST', '0.0.0.0');
   const prefix = config.get<string>('API_PREFIX', '/api/v1');
   const corsOrigin = config.get<string>('CORS_ORIGIN', 'http://localhost:3000');

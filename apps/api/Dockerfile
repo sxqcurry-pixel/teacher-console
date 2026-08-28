@@ -41,6 +41,6 @@ RUN printf '%s\n' \
     'exec node dist/main.js' \
     > entrypoint.sh && chmod +x entrypoint.sh
 
-EXPOSE 4000
+EXPOSE 3000
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["/workspace/apps/api/entrypoint.sh"]
