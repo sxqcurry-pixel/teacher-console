@@ -11,20 +11,8 @@ const nextConfig = {
       { protocol: 'https', hostname: '**' },
     ],
   },
-  async rewrites() {
-    // Server-side proxy: browser hits same-origin /api/v1/*, Vercel forwards to Railway.
-    // BACKEND_URL is a SERVER-ONLY env var (no NEXT_PUBLIC_ prefix) → no CORS, not exposed to browser.
-    const backend =
-      process.env.BACKEND_URL ||
-      process.env.NEXT_PUBLIC_API_URL ||
-      'http://localhost:3001/api/v1';
-    return [
-      {
-        source: '/api/v1/:path*',
-        destination: `${backend}/:path*`,
-      },
-    ];
-  },
+  // API 代理统一由 src/app/api/v1/[...path]/route.ts 处理（本地 dev 与线上一致），
+  // 不再使用 next.config rewrites（其在 Netlify 上的外部代理会丢失 Host/请求体）。
 };
 
 export default nextConfig;
