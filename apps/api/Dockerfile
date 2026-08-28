@@ -37,4 +37,4 @@ ENTRYPOINT ["/sbin/tini", "--"]
 
 # Startup: push schema, seed, run
 # Use pnpm start:prod so it resolves node_modules from workspace root correctly
-CMD ["sh", "-c", "cd /workspace/apps/api && echo '=== Pushing schema ===' && pnpm exec prisma db push --skip-generate 2>&1 | tail -5 && echo '=== Seeding ===' && pnpm db:seed 2>&1 | tail -5 || echo 'seed skipped' && echo '=== Starting NestJS ===' && exec pnpm exec nest start --port 3000"]
+CMD ["sh", "-c", "cd /workspace/apps/api && echo '=== Pushing schema ===' && pnpm exec prisma db push --skip-generate 2>&1 | tail -5 && echo '=== Seeding ===' && pnpm db:seed 2>&1 | tail -5 || echo 'seed skipped' && echo '=== Starting NestJS ===' && exec pnpm exec nest start"]
