@@ -7,7 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigType } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { jwtConfig } from '../../config/jwt.config';
 import { DomainEventBus } from '../../common/domain-event/domain-event-bus.service';
