@@ -35,7 +35,25 @@ RUN echo "=== Verifying dist ===" && find dist -name "main.js" -type f
 EXPOSE 4000
 ENTRYPOINT ["/sbin/tini", "--"]
 
-# Startup: push schema, seed, run
-# main.ts reads process.env.PORT (Railway injects it) with fallback 3000
-# Correct main.js path: tsconfig paths aliases produce nested dirs
-CMD ["sh", "-c", "cd /workspace/apps/api && echo '=== Pushing schema ===' && pnpm exec prisma db push --skip-generate 2>&1 | tail -5 && echo '=== Seeding ===' && pnpm db:seed 2>&1 | tail -5 || echo 'seed skipped' && echo '=== Starting NestJS on PORT='${PORT} ===' && exec node dist/apps/api/src/main.js"]
+# Startup script — EVERY step has fallback, NEVER exit before node runs
+RUN cat > /start.sh << 'STARTSCRIPT'
+#!/bin/bash
+cd /workspace/apps/api
+echo "=== Container START ==="
+echo "PORT=${PORT} NODE_ENV=${NODE_ENV}"
+
+echo "=== Pushing schema ==="
+pnpm exec prisma db push --skip-generate 2>&1 | tail -3 || echo "DB push failed, continuing..."
+
+echo "=== Seeding ==="
+pnpm db:seed 2>&1 | tail -3 || echo "Seed skipped"
+
+echo "=== main.js check ==="
+ls -la dist/apps/api/src/main.js || echo "WARNING: main.js missing!"
+
+echo "=== Starting NestJS on 4000 ==="
+exec node dist/apps/api/src/main.js
+STARTSCRIPT
+RUN chmod +x /start.sh
+
+CMD ["/start.sh"]
