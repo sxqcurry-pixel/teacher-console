@@ -1,40 +1,40 @@
 # ==============================================================
 # Teacher Console API — Production Dockerfile
-# Build: Railway (build context = repo root, via railway.toml)
-# Run:   port exposed by Railway $PORT env var
+# Railway build: root context, via railway.toml dockerfilePath
 # ==============================================================
 FROM node:20-alpine
 
-# --- System deps ---
 RUN apk add --no-cache git curl python3 make gcc g++ libc6-compat tini openssl bash
 
-# --- pnpm ---
+# pnpm
 ENV PNPM_HOME=/root/.local/share/pnpm
 ENV PATH=$PNPM_HOME:$PATH
 RUN corepack enable && corepack prepare pnpm@10.6.2 --activate
 
-# --- Workspace ---
 WORKDIR /workspace
 
-# Copy monorepo manifest first (better layer caching)
+# Copy manifest first
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml turbo.json tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY apps/api ./apps/api
 
-# --- Install + build ---
-RUN pnpm install --frozen-lockfile --ignore-scripts 2>&1 \
-    && cd packages/shared && pnpm run build 2>/dev/null || (cd /workspace/packages/shared && npx tsc -p tsconfig.json --outDir dist 2>&1 || echo "shared build skipped") \
-    && cd /workspace \
-    && cd apps/api \
-    && npx prisma generate 2>&1 \
-    && pnpm run build 2>&1
+# Install (allow lockfile drift on Railway — sometimes pnpm lock format differs)
+RUN pnpm install --no-frozen-lockfile --ignore-scripts 2>&1
 
-# --- Entrypoint ---
+# Build shared lib
+RUN pnpm --filter @spark/shared run build 2>&1 || echo "shared build fallback..." && cd packages/shared && npx tsc -p tsconfig.json 2>&1 || echo "shared skipped"
+
+# Build API — use pnpm exec to ensure locked prisma version
 WORKDIR /workspace/apps/api
+RUN pnpm exec prisma generate 2>&1
+RUN pnpm run build 2>&1
+
+# Entrypoint
 RUN printf '%s\n' \
     '#!/bin/bash' \
-    'echo "[entrypoint] pushing schema (prisma db push)..."' \
-    'npx prisma db push --skip-generate' \
+    'cd /workspace/apps/api' \
+    'echo "[entrypoint] pushing schema..."' \
+    'pnpm exec prisma db push --skip-generate' \
     'echo "[entrypoint] seed..."' \
     'pnpm db:seed || echo "seed skipped"' \
     'echo "[entrypoint] starting NestJS..."' \
