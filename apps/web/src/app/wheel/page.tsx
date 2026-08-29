@@ -372,9 +372,27 @@ function WheelStage({
   const wheelRef = useRef<SVGGElement | null>(null);
   const spinnerRef = useRef<gsap.core.Tween | null>(null);
   const rotationRef = useRef(0);
+  const unmountedRef = useRef(false);
   const [spinning, setSpinning] = useState(false);
   const push = useAppStore((s) => s.pushToast);
   const qc = useQueryClient();
+
+  // 离开 /wheel 页时，必须 kill 正在进行的 GSAP 动画并标记组件已卸载，
+  // 否则 5.2s 的长动画 + setState 回调会在已卸载组件上抛错，卡死路由切换。
+  useEffect(() => {
+    unmountedRef.current = false;
+    return () => {
+      unmountedRef.current = true;
+      if (spinnerRef.current) {
+        try { spinnerRef.current.kill(); } catch {}
+        spinnerRef.current = null;
+      }
+      // 兜底：清掉 wheelRef 节点上所有 gsap 痕迹
+      if (wheelRef.current) {
+        try { gsap.killTweensOf(wheelRef.current); } catch {}
+      }
+    };
+  }, []);
 
   // 计算扇区路径
   const total = segments.reduce((a, b) => a + Math.max(0, b.weight), 0);
@@ -413,8 +431,9 @@ function WheelStage({
       if (!segments.length) throw new Error('转盘还没有扇区');
       return endpoints.wheel.spin({ classId, segments, mode, enableElimination: elimination }) as Promise<WheelSpinResult>;
     },
-    onSuccess: (res) => animateSpin(res),
+    onSuccess: (res) => { if (!unmountedRef.current) animateSpin(res); },
     onError: (e: any) => {
+      if (unmountedRef.current) return;
       push({ variant: 'error', title: '抽取失败', description: e.message });
       setSpinning(false);
     },
@@ -435,8 +454,9 @@ function WheelStage({
       rotation: final,
       duration: 5.2,
       ease: 'power3.out',
-      onStart: () => setSpinning(true),
+      onStart: () => { if (!unmountedRef.current) setSpinning(true); },
       onComplete: () => {
+        if (unmountedRef.current) return;
         rotationRef.current = final % 360;
         setSpinning(false);
         qc.invalidateQueries({ queryKey: ['wheel', 'history'] });
