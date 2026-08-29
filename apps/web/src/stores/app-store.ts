@@ -17,6 +17,11 @@ interface AppState {
   setUser: (u: CurrentUser | null) => void;
   accessToken: string | null;
   setAccessToken: (t: string | null) => void;
+  /**
+   * 登出：清理本地状态 + QueryClient 缓存 + 【单点跳转到 /login】。
+   * —— redirect 必须由 logout 内部单点完成，不能由调用方再 router.push/replace，
+   *    否则会出现 sidebar push + useEffect guard replace 的双调用竞态 → App Router 路由冻结（URL/内容都不变）。
+   */
   logout: () => void;
   // ---- Toast stack ----
   toasts: Toast[];
@@ -25,6 +30,9 @@ interface AppState {
   // ---- Page-level UI filters (communications etc.) ----
   commFilter: { keyword?: string; renewal?: string; type?: string };
   setCommFilter: (f: Partial<{ keyword: string; renewal: string; type: string }>) => void;
+  // ---- Internal runtime injections (由 AppShell 在 boot 后注入) ----
+  __router?: { replace: (url: string) => void };
+  __queryClient?: { clear: () => void; reset: () => void };
 }
 
 export interface Toast {
@@ -92,7 +100,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       window.localStorage.removeItem(STORAGE_KEYS.USER);
       window.localStorage.removeItem(STORAGE_KEYS.CLASS);
     }
+    try { get().__queryClient?.clear(); } catch {}
     set({ user: null, accessToken: null, activeClassId: null });
+    // 【单点跳转】登出后必走这一条，禁止 sidebar / 守卫再额外 push/replace，
+    // 否则双重 redirect 竞争会让 App Router 卡死。
+    const r = get().__router;
+    if (r && typeof window !== 'undefined') {
+      try { window.location.assign('/login'); } catch { r.replace('/login'); }
+    }
   },
 
   toasts: [],

@@ -1,12 +1,11 @@
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Sidebar } from './sidebar';
 import { Header } from './header';
 import { useAppStore } from '@/stores/app-store';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { endpoints } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -14,62 +13,64 @@ import { cn } from '@/lib/utils';
 /**
  * AppShell — responsive PC/Mobile wrapper.
  *
- * - Desktop: Sidebar fixed + Header + motion page container (GSAP camera movement simulated via Motion).
- * - Mobile (<md): Bottom tab nav.
- * - Unauthenticated routes (/login, /register) render minimal.
+ * NOTE: 2026-08-29：根布局页面切换移除所有 AnimatePresence / framer-motion 过渡动画。
+ * 因为 /wheel 等页面内部嵌套使用 motion/AnimatePresence，父子在切换时 framer-motion 调度器会无限等待
+ * （即使没显式 mode="wait" 也可能出现），导致 App Router 路由完全冻结：URL 不更新、内容不变化、0 报错。
+ * 用 CSS 过渡/普通 React 渲染即可，视觉差异可忽略。
  */
 export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
+  const qc = useQueryClient();
   const user = useAppStore((s) => s.user);
   const setUser = useAppStore((s) => s.setUser);
   const setToken = useAppStore((s) => s.setAccessToken);
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
 
+  const bootedRef = useRef(false);
   const isAuthRoute = path === '/login' || path === '/register';
 
-  // Persistent auto-login via stored token + /me
+  // 注入 store 的 router 以便 logout 单点 redirect（避免 sidebar push + guard replace 双重竞争卡死）
   useEffect(() => {
+    useAppStore.setState({
+      __router: router,
+      __queryClient: qc,
+    } as any);
+  }, [router, qc]);
+
+  // Persistent auto-login via stored token + /me. Only runs once.
+  useEffect(() => {
+    if (bootedRef.current) return;
+    bootedRef.current = true;
     (async () => {
       const token =
         typeof window !== 'undefined' ? window.localStorage.getItem('accessToken') : null;
-      if (!token) return;
+      if (!token) {
+        // Boot 时没有 token：如果不在认证路由，立刻 redirect 到 /login（只在 boot 时做，不在后续 user 变化时重复触发！）
+        if (!isAuthRoute) {
+          router.replace('/login');
+        }
+        return;
+      }
       try {
         setToken(token);
         const me = await endpoints.auth.me();
         setUser(me as any);
       } catch {
         setToken(null);
+        setUser(null);
+        if (!isAuthRoute) router.replace('/login');
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Route guard
-  useEffect(() => {
-    if (isAuthRoute) return;
-    if (!user) {
-      const token =
-        typeof window !== 'undefined' ? window.localStorage.getItem('accessToken') : null;
-      if (!token) router.replace('/login');
-    }
-  }, [user, isAuthRoute, router]);
-
   if (isAuthRoute) {
     return (
       <div className="relative z-10 min-h-screen w-full">
-        <AnimatePresence>
-          <motion.div
-            key={path}
-            initial={{ opacity: 0, scale: 0.995, y: 12 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.995, y: -12 }}
-            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-            className="min-h-screen w-full"
-          >
-            {children}
-          </motion.div>
-        </AnimatePresence>
+        <div key={path} className="min-h-screen w-full">
+          {children}
+        </div>
       </div>
     );
   }
@@ -85,18 +86,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <Header />
         <main className="relative flex-1 px-4 py-6 md:px-8 md:py-8 max-w-[1500px] w-full mx-auto">
-          {/* 重要：不用 AnimatePresence mode="wait"；/wheel 有嵌套 motion 时 mode=wait 会导致 exit 永不完成
-              → 路由死锁（URL/内容都不更新，0 错误）。改为原生淡入。 */}
-          <motion.div
-            key={path}
-            initial={{ opacity: 0, filter: 'blur(6px)', y: 10 }}
-            animate={{ opacity: 1, filter: 'blur(0px)', y: 0 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-            style={{ willChange: 'transform, opacity, filter' }}
-          >
-            {children}
-          </motion.div>
+          {/* 纯 React 渲染：无 AnimatePresence / motion 调度器，避免路由冻结 */}
+          <div key={path}>{children}</div>
         </main>
 
         {/* Mobile bottom nav (<md) */}

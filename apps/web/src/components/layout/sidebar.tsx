@@ -248,8 +248,9 @@ export function Sidebar() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => {
+                    // 【只调用 logout】redirect 由 logout 内部单点完成（window.location.assign），
+                    // 避免这里再 router.push + 之前的 useEffect guard replace 的双调用竞态。
                     logout();
-                    router.push('/login');
                   }}
                   className="text-error focus:text-error cursor-pointer"
                 >
