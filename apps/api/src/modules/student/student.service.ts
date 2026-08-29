@@ -3,6 +3,7 @@ import {
   BadRequestException,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../infrastructure/prisma/prisma.service';
 import { DomainEventBus } from '../../common/domain-event/domain-event-bus.service';
 import { FeatureService } from '../feature.service.base';
@@ -205,20 +206,21 @@ export class StudentService extends FeatureService {
       where: { studentId: s.id, type: 'LESSON', weightedScore: { not: null } },
       _avg: { weightedScore: true },
     });
-    // rank within class
-    const rankRow: Array<{ rank: number | null }> = await this.prisma.$queryRawUnsafe(
-      `
-      WITH agg AS (
-        SELECT student_id, COALESCE(SUM(score),0) AS total FROM points
-        WHERE student_id IN (SELECT id FROM students WHERE class_id = $1)
-        GROUP BY student_id
-      )
-      SELECT RANK() OVER (ORDER BY total DESC)::int AS rank
-      FROM agg WHERE student_id = $2
-      `,
-      s.classId,
-      s.id,
-    );
+    // rank within class（Prisma.sql 参数化模板，避免 $queryRawUnsafe 占位符导致 Postgres P2010）
+    let rank: number | undefined;
+    if (s.classId) {
+      const rankRow: Array<{ rank: number | null }> = await this.prisma
+        .$queryRaw(Prisma.sql`
+          WITH agg AS (
+            SELECT student_id, COALESCE(SUM(score),0) AS total FROM points
+            WHERE student_id IN (SELECT id FROM students WHERE class_id = ${s.classId})
+            GROUP BY student_id
+          )
+          SELECT (RANK() OVER (ORDER BY total DESC))::int AS rank
+          FROM agg WHERE student_id = ${s.id}
+        `);
+      rank = rankRow[0]?.rank ?? undefined;
+    }
     return {
       id: s.id,
       serialNo: s.serialNo,
@@ -229,7 +231,7 @@ export class StudentService extends FeatureService {
       className: s.class?.name,
       totalPoints: pointsAgg._sum.score ?? 0,
       avgScore: avgRaw._avg.weightedScore != null ? round2(avgRaw._avg.weightedScore) : undefined,
-      rank: rankRow[0]?.rank ?? undefined,
+      rank,
     };
   }
 
