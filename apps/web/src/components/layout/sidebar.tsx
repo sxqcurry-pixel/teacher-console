@@ -177,10 +177,10 @@ export function Sidebar() {
                       )}
                     >
                       {active && (
-                        <motion.span
-                          layoutId="nav-indicator"
-                          className="absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-full bg-primary"
-                          transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                        // Note: 不用跨页面共享的 layoutId（它和页面内嵌套 motion 组合时，
+                        // 可能阻塞 framer-motion 调度器导致 App Router 路由死锁），改为静态高亮条。
+                        <span
+                          className="absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/_0.45)]"
                         />
                       )}
                       <Icon

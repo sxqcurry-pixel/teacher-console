@@ -58,13 +58,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (isAuthRoute) {
     return (
       <div className="relative z-10 min-h-screen w-full">
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
           <motion.div
             key={path}
             initial={{ opacity: 0, scale: 0.995, y: 12 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.995, y: -12 }}
-            transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
             className="min-h-screen w-full"
           >
             {children}
@@ -85,18 +85,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <Header />
         <main className="relative flex-1 px-4 py-6 md:px-8 md:py-8 max-w-[1500px] w-full mx-auto">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={path}
-              initial={{ opacity: 0, filter: 'blur(10px)', y: 18 }}
-              animate={{ opacity: 1, filter: 'blur(0px)', y: 0 }}
-              exit={{ opacity: 0, filter: 'blur(6px)', y: -14 }}
-              transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-              style={{ willChange: 'transform, opacity, filter' }}
-            >
-              {children}
-            </motion.div>
-          </AnimatePresence>
+          {/* 重要：不用 AnimatePresence mode="wait"；/wheel 有嵌套 motion 时 mode=wait 会导致 exit 永不完成
+              → 路由死锁（URL/内容都不更新，0 错误）。改为原生淡入。 */}
+          <motion.div
+            key={path}
+            initial={{ opacity: 0, filter: 'blur(6px)', y: 10 }}
+            animate={{ opacity: 1, filter: 'blur(0px)', y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+            style={{ willChange: 'transform, opacity, filter' }}
+          >
+            {children}
+          </motion.div>
         </main>
 
         {/* Mobile bottom nav (<md) */}
