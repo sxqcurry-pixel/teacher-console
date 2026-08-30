@@ -89,15 +89,15 @@ export function Sidebar() {
     const origPush = history.pushState.bind(history);
     const origReplace = history.replaceState.bind(history);
     (window as any).__DIAG._hits = { push: 0, replace: 0 };
-    history.pushState = function (...args) {
+    history.pushState = function (state: any, title: string, url?: string) {
       (window as any).__DIAG._hits.push++;
-      console.log('🔴 [DIAG] history.pushState #' + (window as any).__DIAG._hits.push, args[2]);
-      return origPush(...args as any);
+      console.log('🔴 [DIAG] history.pushState #' + (window as any).__DIAG._hits.push, url);
+      return origPush(state, title, url);
     };
-    history.replaceState = function (...args) {
+    history.replaceState = function (state: any, title: string, url?: string) {
       (window as any).__DIAG._hits.replace++;
-      console.log('🔴 [DIAG] history.replaceState #' + (window as any).__DIAG._hits.replace, args[2]);
-      return origReplace(...args as any);
+      console.log('🔴 [DIAG] history.replaceState #' + (window as any).__DIAG._hits.replace, url);
+      return origReplace(state, title, url);
     };
 
     // 监听所有路由变化
