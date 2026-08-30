@@ -27,14 +27,29 @@ async function handler(
 
   const method = req.method.toUpperCase();
   const hasBody = !['GET', 'HEAD'].includes(method);
-  const bodyText = hasBody ? await req.text() : undefined;
+  const isMultipart = (req.headers.get('content-type') || '').toLowerCase().includes('multipart/form-data');
+  // 【修复 xlsx 导入 Unsupported ZIP file】
+  // 所有请求体必须按字节级透传，绝不能用 req.text() 做 UTF-8 解码：
+  //   - multipart/form-data 里 xlsx 是 ZIP 二进制，UTF-8 解码会替换非法字节 → ZIP 损坏 → XLSX 解析报错 Unsupported ZIP file
+  //   - application/json 也应该按字节传（避免不必要的编解码性能损耗 + BOM 等兼容）
+  let body: ArrayBuffer | Uint8Array | string | undefined;
+  if (hasBody && isMultipart) {
+    // 二进制文件上传：传字节，保证与浏览器发送的 multipart payload 字节级一致。
+    const raw = await req.arrayBuffer();
+    body = raw.byteLength ? new Uint8Array(raw) : undefined;
+  } else if (hasBody) {
+    // JSON 等文本型 body：保持 text 兼容（和之前行为一致）
+    const t = await req.text();
+    body = t && t.length ? t : undefined;
+  }
 
   try {
     const upstream = await fetch(target, {
       method,
       headers,
-      body: bodyText && bodyText.length ? bodyText : undefined,
+      body: body as any,
       // SSE 流式需要禁用缓冲时可在此扩展；当前登录/CRUD 用普通请求即可
+      duplex: body instanceof Uint8Array ? 'half' : undefined,
       cache: 'no-store',
     });
     const text = await upstream.text();

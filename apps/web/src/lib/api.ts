@@ -71,9 +71,9 @@ class ApiClient {
     const fd = new FormData();
     fd.append('file', file);
     Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
-    const res = await this.instance.post<ApiResponse<T>>(url, fd, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
+    // ⚠️ 不要手动设置 Content-Type: multipart/form-data！
+    // 浏览器会自动补全 boundary=----WebKitFormBoundaryXXX，手写会丢 boundary → 后端 multer 解析失败。
+    const res = await this.instance.post<ApiResponse<T>>(url, fd);
     return res.data.data;
   }
 
