@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import React from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import React, { useEffect } from 'react';
 import {
   LayoutDashboard,
   Users2,
@@ -69,6 +69,7 @@ const SECONDARY_NAV: Record<string, Array<{ key: string; label: string; href: st
 
 export function Sidebar() {
   const path = usePathname();
+  const router = useRouter();
   const open = useAppStore((s) => s.sidebarOpen);
   const setOpen = useAppStore((s) => s.setSidebarOpen);
   const classes = useAppStore((s) => s.classes);
@@ -77,6 +78,52 @@ export function Sidebar() {
   const setActiveClassId = useAppStore((s) => s.setActiveClassId);
   const user = useAppStore((s) => s.user);
   const logout = useAppStore((s) => s.logout);
+
+  // ==== 诊断代码：全局暴露 router + 拦截 history ====
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    (window as any).__DIAG = (window as any).__DIAG || {};
+    (window as any).__DIAG.router = router;
+    (window as any).__DIAG.pathname = () => window.location.pathname;
+
+    const origPush = history.pushState.bind(history);
+    const origReplace = history.replaceState.bind(history);
+    (window as any).__DIAG._hits = { push: 0, replace: 0 };
+    history.pushState = function (...args) {
+      (window as any).__DIAG._hits.push++;
+      console.log('🔴 [DIAG] history.pushState #' + (window as any).__DIAG._hits.push, args[2]);
+      return origPush(...args as any);
+    };
+    history.replaceState = function (...args) {
+      (window as any).__DIAG._hits.replace++;
+      console.log('🔴 [DIAG] history.replaceState #' + (window as any).__DIAG._hits.replace, args[2]);
+      return origReplace(...args as any);
+    };
+
+    // 监听所有路由变化
+    const origPop = window.onpopstate;
+    window.addEventListener('popstate', () => {
+      console.log('🔴 [DIAG] popstate →', window.location.pathname);
+    });
+
+    console.log('🟢 [DIAG] Sidebar 诊断已安装。当前 pathname:', path);
+    console.log('🟢 [DIAG] 手动测试: window.__DIAG.router.push("/dashboard")');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const navigate = (href: string) => {
+    console.log('🔴 [DIAG] navigate() called, href:', href, 'router.push type:', typeof router.push);
+    try {
+      const result = router.push(href);
+      console.log('🔴 [DIAG] router.push returned:', result);
+    } catch (e) {
+      console.error('🔴 [DIAG] router.push THREW:', e);
+    }
+    // 强制 fallback
+    setTimeout(() => {
+      console.log('🔴 [DIAG] 500ms 后 URL 仍是:', window.location.pathname, '(如果没变，说明 Next Router 卡死了)');
+    }, 500);
+  };
 
   useQuery({
     queryKey: ['classes'],
@@ -172,7 +219,11 @@ export function Sidebar() {
               const active = !!activePrimary && activePrimary.key === item.key;
               return (
                 <div key={item.key} className="space-y-1">
-                  <Link href={item.href} className="group block">
+                  <Link href={item.href} className="group block" onClick={(e) => {
+                    console.log('🔴 [DIAG] Link.onClick fired for', item.href, 'defaultPrevented:', e.defaultPrevented);
+                    // 让 Link 的默认行为也跑，同时手动调用 router.push 并记录
+                    setTimeout(() => navigate(item.href), 0);
+                  }}>
                     <div
                       className={cn(
                         'relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-all',
