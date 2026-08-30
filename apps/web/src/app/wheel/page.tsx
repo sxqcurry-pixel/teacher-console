@@ -43,6 +43,7 @@ export default function WheelPage() {
   const activeClassId = useAppStore((s) => s.activeClassId);
   const classes = useAppStore((s) => s.classes);
   const className = activeClassId ? classes.find((c) => c.id === activeClassId)?.name ?? '未选班级' : '请先选择班级';
+  const qc = useQueryClient();
 
   // 基础学生池
   const { data, isLoading } = useQuery<PageResult<StudentDto>>({
@@ -55,34 +56,70 @@ export default function WheelPage() {
   });
 
   const students = data?.items ?? [];
+  const studentsRef = React.useRef<StudentDto[]>([]);
 
   // 扇区：初始化为学生池，权重默认 1；可淘汰
   const [segments, setSegments] = useState<WheelSegment[]>([]);
   const [elimination, setElimination] = useState(false);
-  const [history, setHistory] = useState<WheelHistoryDto[]>([]);
   const [winner, setWinner] = useState<{ segment: WheelSegment; rotation: number } | null>(null);
   const [showWin, setShowWin] = useState(false);
   const [manualMode, setManualMode] = useState(false);
   const [manualText, setManualText] = useState('');
 
+  // ==== 【根治无限循环 1/3】重建 segments
+  //
+  // 之前写法：
+  //   useEffect(() => { if (students.length===0) setSegments([]); setSegments(prev => { ... }) }, [students]);
+  //   React Query 每次渲染都会返回 items 数组的全新引用 → students 引用变化 → effect 跑 → setState →
+  //   重渲染 → 新 students 引用 → 循环跑，触发 Maximum update depth exceeded。
+  //
+  // 现在用 ref 缓存上次应用的 id 集（O(1)）。只有"学生 id 集合发生变化（增删）"才会真正调用 setSegments；
+  // 引用变了但 id 没变（例如完全相同内容的重请求）→ 不 setState → 不重渲染 → 不死循环。
   useEffect(() => {
-    // 当学生池变化时，重建一次扇区
-    if (students.length === 0) return setSegments([]);
-    setSegments((prev) => {
-      if (prev.length && prev.every((s) => students.find((x) => x.id === s.studentId))) return prev;
-      return students.map((s, i) => ({
+    if (manualMode) return; // 手动模式下不要被 effect 重置扇区
+    if (students.length === 0) {
+      if (segments.length === 0) return; // 已经是 []，不 setState
+      setSegments([]);
+      studentsRef.current = [];
+      return;
+    }
+    const curIds = studentsRef.current ?? [];
+    const sameLen = curIds.length === students.length;
+    const sameContent = sameLen && curIds.every((s, i) => s?.id === students[i]?.id);
+    if (sameContent) return; // 学生池实际内容没变 → 绝对不 setState（最关键）
+
+    // 重建 —— 只跑一次
+    const idSet = new Set(students.map((s) => s.id));
+    const keep = segments.filter((s) => s.studentId && idSet.has(s.studentId));
+    const keepIds = new Set(keep.map((s) => s.studentId));
+    const added = students
+      .filter((s) => !keepIds.has(s.id))
+      .map((s, i) => ({
         id: s.id,
         studentId: s.id,
         label: s.name,
         weight: 1,
-        eliminateOnWin: false,
+        eliminateOnWin: elimination,
         eliminated: false,
-        color: PALETTE[i % PALETTE.length],
+        color: PALETTE[(keep.length + i) % PALETTE.length],
       }));
-    });
+    const next = [...keep, ...added];
+    // 如果顺序不同也保持稳定
+    setSegments(next);
+    studentsRef.current = [...students];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [students]);
 
-  // 历史记录
+  // 【根治无限循环 2/3】history：直接用 React Query 的 data + 本地追加写回 qc.setQueryData
+  //
+  // 之前写法：
+  //   const [history, setHistory] = useState([]);
+  //   useEffect(() => { if (historyQuery.data) setHistory(historyQuery.data); }, [historyQuery.data]);
+  //   onWin: setHistory([localAppend, ...h]);
+  // 效果：historyQuery.data 引用变（每次返回新数组）→ setHistory → 重渲染 → historyQuery.data 引用再变 → 循环
+  //
+  // 现在：不做 state 镜像，只依赖 query 缓存。onWin 时通过 setQueryData 追加进缓存，
+  // React Query 内部有去重逻辑，不会无限触发渲染。
   const historyQuery = useQuery<WheelHistoryDto[]>({
     queryKey: ['wheel', 'history', activeClassId],
     queryFn: async () => {
@@ -91,9 +128,7 @@ export default function WheelPage() {
     },
     enabled: !!activeClassId,
   });
-  useEffect(() => {
-    if (historyQuery.data) setHistory(historyQuery.data);
-  }, [historyQuery.data]);
+  const history = historyQuery.data ?? [];
 
   const alive = segments.filter((s) => !s.eliminated);
 
@@ -174,15 +209,19 @@ export default function WheelPage() {
                 if (elimination) {
                   setSegments((prev) => prev.map((s) => s.id === w.segment.id ? { ...s, eliminated: true } : s));
                 }
-                // 本地追加一条历史（服务端已经保存的话会被 history query 覆盖）
-                setHistory((h) => [{
+                // 【根治无限循环 3/3】本地追加历史：不写 state，而是改 React Query 缓存
+                const newEntry: WheelHistoryDto = {
                   id: 'local-' + Date.now(),
                   classId: activeClassId ?? '',
                   mode: manualMode ? 'PRIZE' : 'STUDENT',
                   winnerLabel: w.segment.label,
                   winnerStudentId: w.segment.studentId ?? null,
                   createdAt: new Date().toISOString(),
-                }, ...h].slice(0, 50));
+                };
+                qc.setQueryData<WheelHistoryDto[]>(
+                  ['wheel', 'history', activeClassId],
+                  (old) => [newEntry, ...(old ?? []).filter((x) => !x.id.startsWith('local-') || x.id !== newEntry.id)].slice(0, 50),
+                );
               }}
               isLoading={isLoading}
             />
