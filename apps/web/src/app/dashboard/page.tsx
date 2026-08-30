@@ -3,7 +3,6 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { motion, useInView } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import {
   Users2,
@@ -130,8 +129,8 @@ function StatCard({
   delta?: string;
   tone: 'primary' | 'gold' | 'info' | 'success' | 'warning' | 'error';
 }) {
-  const ref = React.useRef(null);
-  const inView = useInView(ref, { once: true, margin: '-20%' });
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [inView, setInView] = React.useState(false);
   const toneMap: Record<string, string> = {
     primary: 'text-primary',
     gold: 'text-[hsl(45_93%_65%)]',
@@ -140,6 +139,25 @@ function StatCard({
     warning: 'text-warning',
     error: 'text-error',
   };
+  React.useEffect(() => {
+    if (!ref.current || typeof IntersectionObserver === 'undefined') {
+      setInView(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            setInView(true);
+            io.disconnect();
+          }
+        });
+      },
+      { rootMargin: '-20% 0px' },
+    );
+    io.observe(ref.current);
+    return () => io.disconnect();
+  }, []);
   return (
     <Card ref={ref}>
       <CardContent className="p-5">
@@ -151,15 +169,19 @@ function StatCard({
         </div>
         <div className="mt-4">
           <div className="text-xs uppercase tracking-widest text-muted-foreground">{label}</div>
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={inView ? { opacity: 1, y: 0 } : {}}
-            transition={{ duration: 0.5, delay: 0.05 }}
+          <div
             className={`mt-1 font-semibold tabular ${toneMap[tone]} tracking-tight`}
-            style={{ fontSize: 34, lineHeight: 1.1 }}
+            style={{
+              fontSize: 34,
+              lineHeight: 1.1,
+              transition: 'opacity 0.5s ease, transform 0.5s ease',
+              transitionDelay: '50ms',
+              opacity: inView ? 1 : 0,
+              transform: inView ? 'translateY(0)' : 'translateY(12px)',
+            }}
           >
             {value}
-          </motion.div>
+          </div>
         </div>
       </CardContent>
     </Card>
@@ -183,19 +205,20 @@ function StatsGrid() {
   return (
     <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-6">
       {cards.map((c, i) => (
-        <motion.div
+        <div
           key={c.key}
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.35, delay: i * 0.04 }}
+          style={{
+            transition: 'opacity 0.35s ease, transform 0.35s ease',
+            transitionDelay: `${i * 40}ms`,
+            animation: `sparkDashboardCardIn 0.5s ease ${i * 40}ms both`,
+          }}
         >
           {isLoading ? (
             <Card><CardContent className="p-5 space-y-3"><Skeleton className="h-10 w-10 rounded-xl" /><Skeleton className="h-8 w-24" /><Skeleton className="h-7 w-16" /></CardContent></Card>
           ) : (
             <StatCard {...c} />
           )}
-        </motion.div>
+        </div>
       ))}
     </section>
   );
@@ -276,12 +299,11 @@ function QuickActions() {
       <CardContent className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-0">
         {items.map((a, i) => (
           <Link key={a.key} href={a.href} className="block">
-            <motion.div
-              initial={{ opacity: 0, y: 14 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: i * 0.05 }}
+            <div
               className="spark-glass spark-card-hover p-4 h-full flex flex-col gap-2"
+              style={{
+                animation: `sparkDashboardCardIn 0.5s ease ${i * 50}ms both`,
+              }}
             >
               <div className="flex items-center gap-2">
                 <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary/15 text-primary spark-glow">
@@ -291,7 +313,7 @@ function QuickActions() {
               </div>
               <div className="text-xs text-muted-foreground">{a.desc}</div>
               <ArrowUpRight className="mt-auto h-4 w-4 ml-auto text-primary/70" />
-            </motion.div>
+            </div>
           </Link>
         ))}
       </CardContent>

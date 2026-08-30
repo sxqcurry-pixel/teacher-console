@@ -178,3 +178,9 @@
   0% { opacity: 0; transform: translateY(-4px); max-height: 0; }
   100% { opacity: 1; transform: translateY(0); max-height: 400px; }
 }
+
+/* Dashboard 卡片入场（纯 CSS keyframes 替代 framer-motion whileInView） */
+@keyframes sparkDashboardCardIn {
+  0% { opacity: 0; transform: translateY(14px); }
+  100% { opacity: 1; transform: translateY(0); }
+}

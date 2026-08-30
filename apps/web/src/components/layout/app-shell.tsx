@@ -68,13 +68,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   if (isAuthRoute) {
     return (
       <div className="relative z-10 min-h-screen w-full">
-        <div key={path} className="min-h-screen w-full">
+        <div key={'auth-' + path} className="min-h-screen w-full">
           {children}
         </div>
       </div>
     );
   }
 
+  // 每次路径变化都强制 children 重新挂载：彻底避免上一页的 useEffect/IO/观察者
+  // 遗留到下一页的副作用——这是之前 dashboard → wheel 时 framer-motion useInView
+  // 的 IntersectionObserver 在卸载边界触发回调导致 router 死锁的最后一道防线。
+  // 配合前面移除的所有全局 framer-motion 调度器（sidebar/header/dashboard），
+  // 页面切换时 React 会真正销毁旧组件再重新构造新组件，不会有跨页面的副作用残留。
   return (
     <div className="relative z-10 min-h-screen w-full">
       <Sidebar />
@@ -86,8 +91,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       >
         <Header />
         <main className="relative flex-1 px-4 py-6 md:px-8 md:py-8 max-w-[1500px] w-full mx-auto">
-          {/* 纯 React 渲染：无 AnimatePresence / motion 调度器，避免路由冻结 */}
-          <div key={path}>{children}</div>
+          {/* 🔴 强制 remount 防护：以 path 为 key，每次路由变化都会完全销毁上一个页面的组件树，
+                 杜绝上一页的 IO / motion 调度器 / pending useEffect 回调残留到下一页 */}
+          <RemountGuard path={path}>
+            <div key={'page-' + path}>
+              {children}
+            </div>
+          </RemountGuard>
         </main>
 
         {/* Mobile bottom nav (<md) */}
@@ -95,6 +105,30 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
     </div>
   );
+}
+
+/**
+ * RemountGuard — 兜底强制重挂载组件
+ *
+ * 检测路径切换后，在一个微任务内先展示一个空的占位层，然后再渲染真正的 children。
+ * 这样即使 React 复用了某些 fiber（如 Suspense boundary），我们也能保证上一页的 DOM/effect 被真正卸载。
+ */
+function RemountGuard({ path, children }: { path: string; children: React.ReactNode }) {
+  const [displayKey, setDisplayKey] = React.useState(path);
+
+  useEffect(() => {
+    let cancelled = false;
+    // 用 queueMicrotask 保证在路由 pending 更新后切换 key，
+    // 确保 router.push 完成回调已经全部执行后再重挂载
+    queueMicrotask(() => {
+      if (!cancelled) setDisplayKey(path + '::' + Date.now());
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  return <React.Fragment key={displayKey}>{children}</React.Fragment>;
 }
 
 function MobileBottomNav() {
