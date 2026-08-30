@@ -172,3 +172,9 @@
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
+
+/* 纯 CSS 动画 —— 侧边栏二级菜单展开（彻底移除 framer-motion 后替换） */
+@keyframes sparkSubmenuIn {
+  0% { opacity: 0; transform: translateY(-4px); max-height: 0; }
+  100% { opacity: 1; transform: translateY(0); max-height: 400px; }
+}

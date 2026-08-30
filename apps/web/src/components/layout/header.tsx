@@ -3,7 +3,6 @@
 import React from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
 import { BellRing, Search, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,15 +37,13 @@ export function Header() {
     <header className="sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-border bg-background/60 px-4 backdrop-blur-xl md:px-6">
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <motion.span
+          {/* 移除 framer-motion，用 key 强制重渲染 + CSS transition 淡入 */}
+          <span
             key={meta.title}
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-            className="spark-h2 md:text-[22px]"
+            className="spark-h2 md:text-[22px] transition-opacity duration-150"
           >
             {meta.title}
-          </motion.span>
+          </span>
           {sync.connected ? (
             <Badge variant="success" className="gap-1"><Wifi className="h-3 w-3" /> 实时同步</Badge>
           ) : user ? (

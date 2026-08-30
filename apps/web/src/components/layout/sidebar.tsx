@@ -2,13 +2,10 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import React, { useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React from 'react';
 import {
   LayoutDashboard,
   Users2,
-  ClipboardCheck,
-  Star,
   Layers,
   Sparkles,
   MessageCircleHeart,
@@ -41,7 +38,6 @@ import {
 import { useAppStore } from '@/stores/app-store';
 import { useQuery } from '@tanstack/react-query';
 import { endpoints } from '@/lib/api';
-import { useRouter } from 'next/navigation';
 
 interface NavItem {
   key: string;
@@ -81,7 +77,6 @@ export function Sidebar() {
   const setActiveClassId = useAppStore((s) => s.setActiveClassId);
   const user = useAppStore((s) => s.user);
   const logout = useAppStore((s) => s.logout);
-  const router = useRouter();
 
   useQuery({
     queryKey: ['classes'],
@@ -104,15 +99,25 @@ export function Sidebar() {
     : undefined;
 
   return (
-    <AnimatePresence initial={false}>
+    <>
+      {/* 收起态：只剩一个悬浮按钮 */}
+      {!open && (
+        <div className="fixed left-0 top-0 z-40 hidden h-14 items-center px-3 md:flex">
+          <Button variant="ghost" size="icon" onClick={() => setOpen(true)} aria-label="展开侧栏">
+            <PanelLeftOpen className="h-5 w-5 text-muted-foreground" />
+          </Button>
+        </div>
+      )}
+
+      {/* 展开态：侧栏（用纯 CSS transition 滑入/滑出，彻底移除 AnimatePresence/motion 避免 framer-motion 调度器死锁）*/}
       {open && (
-        <motion.aside
-          key="sidebar"
-          initial={{ x: -280, opacity: 0 }}
-          animate={{ x: 0, opacity: 1 }}
-          exit={{ x: -280, opacity: 0 }}
-          transition={{ type: 'spring', stiffness: 260, damping: 30 }}
-          className="fixed left-0 top-0 z-40 hidden h-screen w-72 shrink-0 flex-col border-r border-border bg-card/80 backdrop-blur-xl md:flex"
+        <aside
+          className={cn(
+            'fixed left-0 top-0 z-40 hidden h-screen w-72 shrink-0 flex-col border-r border-border bg-card/80 backdrop-blur-xl md:flex',
+            // 纯 CSS transition 代替 framer-motion
+            'transition-[transform,opacity] duration-200 ease-out',
+            'translate-x-0 opacity-100',
+          )}
         >
           {/* Brand */}
           <div className="flex items-center justify-between px-5 pt-5 pb-3">
@@ -177,8 +182,6 @@ export function Sidebar() {
                       )}
                     >
                       {active && (
-                        // Note: 不用跨页面共享的 layoutId（它和页面内嵌套 motion 组合时，
-                        // 可能阻塞 framer-motion 调度器导致 App Router 路由死锁），改为静态高亮条。
                         <span
                           className="absolute left-0 top-1/2 h-6 w-0.5 -translate-y-1/2 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/_0.45)]"
                         />
@@ -193,12 +196,10 @@ export function Sidebar() {
                     </div>
                   </Link>
                   {active && secondary && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.18 }}
-                      className="ml-8 flex flex-col gap-1 border-l border-dashed border-border py-1"
+                    // 纯 CSS transition 二级菜单展开：overflow-hidden + max-h 过渡
+                    <div
+                      className="ml-8 flex flex-col gap-1 border-l border-dashed border-border py-1 overflow-hidden"
+                      style={{ animation: 'sparkSubmenuIn 150ms ease-out' }}
                     >
                       {secondary.map((s) => {
                         const active2 = path === s.href || (s.href !== '/students' && s.href !== '/communications' && path.startsWith(s.href));
@@ -217,7 +218,7 @@ export function Sidebar() {
                           </Link>
                         );
                       })}
-                    </motion.div>
+                    </div>
                   )}
                 </div>
               );
@@ -259,15 +260,8 @@ export function Sidebar() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
-        </motion.aside>
+        </aside>
       )}
-      {!open && (
-        <div className="fixed left-0 top-0 z-40 hidden h-14 items-center px-3 md:flex">
-          <Button variant="ghost" size="icon" onClick={() => setOpen(true)} aria-label="展开侧栏">
-            <PanelLeftOpen className="h-5 w-5 text-muted-foreground" />
-          </Button>
-        </div>
-      )}
-    </AnimatePresence>
+    </>
   );
 }

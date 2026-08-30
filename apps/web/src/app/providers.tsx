@@ -57,15 +57,33 @@ function SyncProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!accessToken) return;
     const url = process.env.NEXT_PUBLIC_WS_URL ?? (typeof window !== 'undefined' ? window.location.origin : '');
+
+    // 降级策略：Netlify/Vercel 等 serverless 平台不支持 WebSocket 转发到外部域名，
+    // 默认 origin 时直接跳过连接，避免无限重连每 1.5s 触发全局 setState 重渲染拖垮主线程。
+    const externalWs = !!process.env.NEXT_PUBLIC_WS_URL;
+    if (!externalWs) {
+      // 无 WS_URL 配置 = 部署在不支持 WebSocket 的平台（Netlify），跳过连接
+      setState({ socket: null, connected: false, channels: new Set() });
+      return;
+    }
+
     const socket = io(`${url}/ws/sync`, {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'], // polling 优先，Netlify 至少支持长轮询
       auth: { token: accessToken },
       reconnection: true,
-      reconnectionDelay: 1500,
+      reconnectionDelay: 2000,
+      reconnectionDelayMax: 8000,
+      reconnectionAttempts: 5, // 最多重试 5 次，之后放弃（避免无限重连）
+      timeout: 8000,
     });
 
     socket.on('connect', () => setState((s) => ({ ...s, connected: true })));
     socket.on('disconnect', () => setState((s) => ({ ...s, connected: false })));
+    socket.on('connect_error', () => setState((s) => ({ ...s, connected: false })));
+    socket.on('reconnect_failed', () => {
+      // 所有重试失败 → 彻底放弃，不再触发 setState 风暴
+      setState((s) => ({ ...s, connected: false }));
+    });
     socket.on('message', (env: SyncEnvelope) => {
       handlersRef.current.forEach((h) => h(env));
       // optimistic: refetch relevant entity list on DATA_CHANGED
@@ -74,7 +92,6 @@ function SyncProvider({ children }: { children: React.ReactNode }) {
         if (entity) {
           const q = invalidateRef.current;
           if (!q) return;
-          // Broad invalidation avoids complex key mapping
           q.invalidateQueries({
             predicate: (q) => {
               const key = (q.queryKey[0] as string) ?? '';
