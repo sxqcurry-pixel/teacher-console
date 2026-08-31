@@ -16,8 +16,8 @@ import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current
 import type { CommunicationDto, PageResult } from '@shared/dto';
 
 class CommQueryDto {
-  @IsOptional() @IsNumber() page = 1;
-  @IsOptional() @IsNumber() pageSize = 20;
+  @IsOptional() @IsString() page?: string;
+  @IsOptional() @IsString() pageSize?: string;
   @IsOptional() @IsString() classId?: string;
   @IsOptional() @IsString() studentId?: string;
   @IsOptional() @IsString() renewalStatus?: string;
@@ -40,7 +40,9 @@ export class CommunicationController {
 
   @Get()
   list(@Query() q: CommQueryDto, @CurrentUser() u: CurrentUserPayload): Promise<PageResult<CommunicationDto>> {
-    return this.comms.list(u.id, q);
+    const page = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
+    const pageSize = Math.max(1, Math.min(500, parseInt(q.pageSize ?? '20', 10) || 20));
+    return this.comms.list(u.id, { ...q, page, pageSize });
   }
 
   @Post()

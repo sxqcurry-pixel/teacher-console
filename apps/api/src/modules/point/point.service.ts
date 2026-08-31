@@ -115,38 +115,49 @@ export class PointService extends FeatureService {
   async ranking(teacherId: string, classId: string, limit = 50): Promise<PointRankingDto[]> {
     const cls = await this.prisma.class.findUnique({ where: { id: classId } });
     this.ensureOwnerOr404(cls, teacherId);
-    const rows: Array<{ student_id: string; name: string; serial_no: number; total: bigint | number }> =
-      await this.prisma.$queryRawUnsafe(
-        `
-      SELECT st.id                            AS student_id,
-             st.name,
-             st.serial_no,
-             COALESCE(SUM(p.score), 0)        AS total
-      FROM students st
-      LEFT JOIN points p ON p.student_id = st.id
-      WHERE st.class_id = $1
-      GROUP BY st.id, st.name, st.serial_no
-      ORDER BY total DESC, st.serial_no ASC
-      LIMIT $2
-      `,
-        classId,
-        limit,
-      );
+    // 纯 Prisma：全班学生（含 0 分）+ groupBy 聚合 points，TS 内算 RANK()
+    const [students, agg] = await Promise.all([
+      this.prisma.student.findMany({
+        where: { classId },
+        select: { id: true, name: true, serialNo: true },
+        orderBy: { serialNo: 'asc' },
+      }),
+      this.prisma.point.groupBy({
+        by: ['studentId'],
+        where: { student: { classId } },
+        _sum: { score: true },
+      }),
+    ]);
+    const scoreMap = new Map<string, number>();
+    for (const s of students) scoreMap.set(s.id, 0);
+    for (const a of agg) scoreMap.set(a.studentId, Number(a._sum.score ?? 0));
+    type Row = {
+      studentId: string;
+      studentName: string;
+      serialNo: number;
+      totalScore: number;
+    };
+    const sorted: Row[] = students
+      .map((s: { id: string; name: string; serialNo: number }) => ({
+        studentId: s.id,
+        studentName: s.name,
+        serialNo: s.serialNo,
+        totalScore: scoreMap.get(s.id) ?? 0,
+      }))
+      .sort((a: Row, b: Row) =>
+        a.totalScore === b.totalScore
+          ? a.serialNo - b.serialNo
+          : b.totalScore - a.totalScore,
+      )
+      .slice(0, Math.max(1, limit));
     let rank = 0;
     let prevTotal: number | null = null;
-    return rows.map((r) => {
-      const total = Number(r.total);
-      if (total !== prevTotal) {
+    return sorted.map((row: Row & { rank?: number }) => {
+      if (row.totalScore !== prevTotal) {
         rank += 1;
-        prevTotal = total;
+        prevTotal = row.totalScore;
       }
-      return {
-        studentId: r.student_id,
-        studentName: r.name,
-        serialNo: r.serial_no,
-        totalScore: total,
-        rank,
-      };
+      return { ...row, rank };
     });
   }
 }

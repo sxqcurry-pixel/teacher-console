@@ -152,27 +152,35 @@ export class ScoreService extends FeatureService {
   // ---------- helpers ----------
 
   private async recalcRanks(classId: string, lessonId: string | null, type: PrismaScoreType) {
-    // use raw query with RANK() then write-back through upsert
-    const rows: Array<{ score_id: string; rnk: number }> = await this.prisma.$queryRawUnsafe(
-      `
-      SELECT s.id AS score_id,
-             RANK() OVER (ORDER BY COALESCE(s.weighted_score, 0) DESC)::int AS rnk
-      FROM scores s
-      JOIN students st ON st.id = s.student_id
-      WHERE st.class_id = $1
-        AND s.type = $2::"ScoreType"
-        AND ($3::text IS NULL OR s.lesson_id = $3)
-      `,
-      classId,
+    // 纯 Prisma + TS sort 计算 RANK()，避免 $queryRaw（Prisma P2010 列名方言风险）
+    const where: any = {
+      student: { classId },
       type,
-      lessonId,
+      ...(lessonId ? { lessonId } : { lessonId: { not: null } }),
+    };
+    const scores = await this.prisma.score.findMany({
+      where,
+      select: { id: true, weightedScore: true },
+    });
+    if (!scores.length) return;
+    const sorted = [...scores].sort(
+      (a, b) => Number(b.weightedScore ?? 0) - Number(a.weightedScore ?? 0),
     );
-    if (!rows.length) return;
-    await Promise.all(
-      rows.map((r) =>
-        this.prisma.score.update({ where: { id: r.score_id }, data: { rank: r.rnk } }),
-      ),
-    );
+    const rankUpdates: Array<Promise<any>> = [];
+    let lastScore: number | null = null;
+    let lastRank = 0;
+    for (let i = 0; i < sorted.length; i++) {
+      const s = sorted[i]!;
+      const score = Number(s.weightedScore ?? 0);
+      const pos = i + 1;
+      const rank = score === lastScore ? lastRank : pos;
+      rankUpdates.push(
+        this.prisma.score.update({ where: { id: s.id }, data: { rank } }),
+      );
+      lastScore = score;
+      lastRank = rank;
+    }
+    await Promise.all(rankUpdates);
   }
 
   private labelResult(raw: number, fullScore: number): string {

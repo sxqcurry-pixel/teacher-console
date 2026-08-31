@@ -39,9 +39,16 @@ import type {
   StudentDto,
 } from '@shared/dto';
 
+/**
+ * 查询 DTO：
+ * ⚠️ page/pageSize 走 HTTP querystring —— 所有值都是字符串（例如 "1" / "200"）。
+ *   class-validator 默认 strict：`@IsNumber()` 不认字符串数字，ValidationPipe 的
+ *   enableImplicitConversion 也不是 100% 稳（依赖 reflect-metadata + 运行时 class-transformer 版本）。
+ *   最稳写法：@IsString() 接受字符串，service 内显式 Number(x) 转。
+ */
 class QueryDto {
-  @IsOptional() @IsNumber() page = 1;
-  @IsOptional() @IsNumber() pageSize = 20;
+  @IsOptional() @IsString() page?: string;
+  @IsOptional() @IsString() pageSize?: string;
   @IsOptional() @IsString() classId?: string;
   @IsOptional() @IsString() status?: string;
   @IsOptional() @IsString() keyword?: string;
@@ -86,7 +93,10 @@ export class StudentController {
 
   @Get()
   list(@Query() q: QueryDto, @CurrentUser() u: CurrentUserPayload): Promise<PageResult<StudentDto>> {
-    return this.students.query(u.id, q);
+    // querystring 传参都是字符串，显式转 number，避免 class-validator 误判。
+    const page = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
+    const pageSize = Math.max(1, Math.min(500, parseInt(q.pageSize ?? '20', 10) || 20));
+    return this.students.query(u.id, { ...q, page, pageSize });
   }
 
   @Get(':id')

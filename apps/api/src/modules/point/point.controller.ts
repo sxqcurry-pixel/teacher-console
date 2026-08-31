@@ -16,8 +16,8 @@ import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current
 import type { PageResult, PointDto, PointRankingDto } from '@shared/dto';
 
 class PointQueryDto {
-  @IsOptional() @IsNumber() page = 1;
-  @IsOptional() @IsNumber() pageSize = 50;
+  @IsOptional() @IsString() page?: string;
+  @IsOptional() @IsString() pageSize?: string;
   @IsOptional() @IsString() classId?: string;
   @IsOptional() @IsString() studentId?: string;
   @IsOptional() @IsString() category?: string;
@@ -43,7 +43,9 @@ export class PointController {
     @Query() q: PointQueryDto,
     @CurrentUser() u: CurrentUserPayload,
   ): Promise<PageResult<PointDto>> {
-    return this.points.query(u.id, q);
+    const page = Math.max(1, parseInt(q.page ?? '1', 10) || 1);
+    const pageSize = Math.max(1, Math.min(500, parseInt(q.pageSize ?? '50', 10) || 50));
+    return this.points.query(u.id, { ...q, page, pageSize });
   }
 
   @Get('ranking')

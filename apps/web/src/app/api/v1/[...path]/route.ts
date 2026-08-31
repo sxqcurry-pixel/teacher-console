@@ -73,6 +73,13 @@ async function handler(
       cache: 'no-store',
     } satisfies Parameters<typeof fetch>[1]);
     const text = await upstream.text();
+    // 🔴 后端返回非 2xx 时，把原始响应体完整打印出来（避免之前只看状态码瞎猜）
+    if (process.env.NODE_ENV !== 'production' && upstream.status >= 400) {
+      const pathDisplay = `${method} /${(ctx.params.path ?? []).join('/')}${req.nextUrl.search || ''}`;
+      console.error(
+        `[PROXY_v3_UPSTREAM_ERR] ${pathDisplay}  STATUS=${upstream.status}  BODY=${text.slice(0, 800)}`,
+      );
+    }
     return new NextResponse(text, {
       status: upstream.status,
       headers: {

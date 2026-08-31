@@ -13,7 +13,6 @@ export class DashboardService {
       totalPoints,
       upcomingTodos,
       renewalFollowUps,
-      lastLessonAvgRow,
     ] = await Promise.all([
       this.prisma.class.count({ where: { teacherId } }),
       this.prisma.student.count({ where: { class: { teacherId }, status: 'ACTIVE' } }),
@@ -30,28 +29,59 @@ export class DashboardService {
           createdAt: { gte: new Date(Date.now() - 30 * 86400_000) },
         },
       }),
-      this.prisma.$queryRawUnsafe(
-        `
-        SELECT AVG(s.weighted_score)::numeric(5,2) AS avg
-        FROM scores s
-        JOIN lessons l ON l.id = s.lesson_id
-        JOIN classes c ON c.id = l.class_id
-        WHERE c.teacher_id = $1
-          AND s.type = 'LESSON'
-          AND s.weighted_score IS NOT NULL
-          AND l.index = (
-            SELECT MAX(index) FROM lessons l2 WHERE l2.class_id = c.id
-          )
-      `,
-        teacherId,
-      ) as Promise<Array<{ avg: number | null }>>,
     ]);
+
+    // —— 最后一讲全班均分：纯 Prisma groupBy，避免 $queryRaw（P2010 列名方言风险）
+    // 步骤 1：老师所有班级
+    const classIds = (
+      await this.prisma.class.findMany({
+        where: { teacherId },
+        select: { id: true },
+      })
+    ).map((c: { id: string }) => c.id);
+
+    let avgScoreLastLesson: number | null = null;
+    if (classIds.length) {
+      // 步骤 2：找出每个班级的最大 lesson.index（=最后一讲）
+      const lastIndexPerClass = new Map<string, number>();
+      const byClass = await this.prisma.lesson.groupBy({
+        by: ['classId'],
+        where: { classId: { in: classIds } },
+        _max: { index: true },
+      });
+      for (const row of byClass) {
+        if (row._max.index != null) lastIndexPerClass.set(row.classId, row._max.index);
+      }
+      if (lastIndexPerClass.size) {
+        // 步骤 3：每个班级最后一讲的 LESSON 类型 weighted_score 平均
+        const filters = Array.from(lastIndexPerClass.entries()).map(([classId, index]) => ({
+          classId,
+          lesson: { index },
+          type: 'LESSON' as const,
+          weightedScore: { not: null },
+        }));
+        if (filters.length) {
+          const avgAgg = await this.prisma.score.aggregate({
+            where: {
+              OR: filters.map((f) => ({
+                student: { classId: f.classId },
+                lesson: { classId: f.classId, index: f.lesson.index },
+                type: f.type,
+                weightedScore: f.weightedScore,
+              })),
+            },
+            _avg: { weightedScore: true },
+          });
+          const raw = avgAgg._avg.weightedScore;
+          avgScoreLastLesson = raw != null ? Number(Number(raw).toFixed(2)) : null;
+        }
+      }
+    }
+
     return {
       totalStudents,
       activeClasses,
-      avgScoreLastLesson: Array.isArray(lastLessonAvgRow) && lastLessonAvgRow[0]
-        ? (lastLessonAvgRow[0] as { avg?: number | null }).avg ?? null
-        : null,
+      avgScoreLastLesson,
       totalPointsGiven: Number(totalPoints) || 0,
       upcomingTodosCount: upcomingTodos,
       renewalFollowUpCount: renewalFollowUps,
