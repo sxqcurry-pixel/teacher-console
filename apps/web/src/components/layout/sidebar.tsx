@@ -191,9 +191,13 @@ export function Sidebar() {
           <div className="px-4 py-3">
             <label className="spark-eyebrow mb-2">当前班级</label>
             <Select value={activeClassId ?? ''} onValueChange={(v) => setActiveClassId(v)}>
-              <SelectTrigger className="bg-background/60 border-primary/25">
+              <SelectTrigger className="bg-background/60 border-primary/25" suppressHydrationWarning>
+                {/* suppressHydrationWarning：服务端 SSR 渲染时 localStorage 拿不到 activeClassId → 显示『加载班级…』
+                    客户端 Hydrate 后能拿到缓存 → 显示选中班级名 / 或『选择班级』，
+                    两端第一次渲染文本不一致会触发 Hydration mismatch overlay → 导致 Next _rsc 请求 ERR_ABORTED
+                    这里只是 placeholder 文本 + 纯展示，不需要严格 hydration，静音即可。 */}
                 <SelectValue placeholder="选择班级 / 新建班级">
-                  {classes.find((c) => c.id === activeClassId)?.name ?? '加载班级…'}
+                  {classes.find((c) => c.id === activeClassId)?.name ?? '选择班级 / 新建班级'}
                 </SelectValue>
               </SelectTrigger>
               <SelectContent>

@@ -15,9 +15,14 @@ class ApiClient {
     this.instance = axios.create({
       baseURL: process.env.NEXT_PUBLIC_API_URL ?? '/api/v1',
       timeout: 30_000,
+      // ⚠️【不要全局设置 Content-Type: application/json】
+      // 因为 axios 会把默认 headers 合并到每次请求，即使 data 是浏览器 FormData 也不会自动删除/替换这条：
+      //   结果是上传请求的 Content-Type 变成 application/json（缺 boundary=----xxx）
+      //   → proxy isMultipart 检测失败 → 走 req.text() UTF-8 解码，ZIP 字节损坏，同时 multer 找不到 file 字段
+      //   → "Unsupported ZIP file" / "File is required"
+      // 正确做法：在每个 method 里对非 FormData 的 body 手动 set Content-Type
       headers: {
         Accept: 'application/json',
-        'Content-Type': 'application/json',
       },
     });
 
@@ -25,6 +30,28 @@ class ApiClient {
       if (typeof window === 'undefined') return config;
       const token = localStorage.getItem('accessToken');
       if (token) config.headers.Authorization = `Bearer ${token}`;
+      // 浏览器 FormData：禁止任何手动 Content-Type，交给浏览器自动写 multipart/form-data; boundary=----xxx
+      if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+        // @ts-expect-error delete Content-Type case-insensitively
+        delete config.headers?.['Content-Type'];
+        // @ts-expect-error lower-case too
+        delete config.headers?.['content-type'];
+        return config;
+      }
+      // 文本/对象 body：默认 JSON；如果调用方已经明确设了 Content-Type 就尊重
+      if (
+        config.data !== undefined &&
+        !(
+          typeof Blob !== 'undefined' &&
+          (config.data instanceof Blob || config.data instanceof ArrayBuffer || ArrayBuffer.isView(config.data))
+        )
+      ) {
+        const current = (config.headers as any)?.['Content-Type'] ?? (config.headers as any)?.['content-type'];
+        if (!current) {
+          if (!config.headers) (config as any).headers = {};
+          (config.headers as any)['Content-Type'] = 'application/json';
+        }
+      }
       return config;
     });
 
