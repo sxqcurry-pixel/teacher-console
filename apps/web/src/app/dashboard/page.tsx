@@ -3,7 +3,7 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Users2,
   GraduationCap,
@@ -24,6 +24,16 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { endpoints } from '@/lib/api';
 import { formatRelative, labelOf, rankMedal } from '@/lib/utils';
 import type { DashboardStats, PointRankingDto, RecentActivity } from '@spark/shared';
@@ -67,6 +77,8 @@ function HeroCTA() {
   const push = useAppStore((s) => s.pushToast);
   const router = useRouter();
   const activeClassId = useAppStore((s) => s.activeClassId);
+  const setActiveClassId = useAppStore((s) => s.setActiveClassId);
+  const qc = useQueryClient();
   return (
     <Card className="overflow-hidden relative !border-primary/25">
       <div className="absolute inset-0 bg-hero-glow pointer-events-none" aria-hidden />
@@ -78,7 +90,11 @@ function HeroCTA() {
           <h2 className="spark-h2 leading-tight">
             今天也要带孩子们，<span className="text-gradient-brand">冲上数学火箭班 🚀</span>
           </h2>
-          <p className="text-muted-foreground">
+          {/* suppressHydrationWarning：activeClassId 来源于 localStorage，SSR 拿不到为 null，
+              客户端 hydration 首帧有缓存值，两端 <p> 文本不同会触发 React Hydration mismatch 红框 →
+              Next 取消正在加载的 _rsc payload（ERR_ABORTED）→ 后续路由异常。
+              这里只是纯展示引导文案，不需要严格两端一致，静音即可，真实 UI 在下一帧 useEffect/setClasses 后会对齐。*/}
+          <p className="text-muted-foreground" suppressHydrationWarning>
             {activeClassId
               ? `当前工作班级：${classes.find((c) => c.id === activeClassId)?.name ?? '选择中'}。左侧可随时切换。`
               : '先在左上角侧栏选择班级，或创建你的第一个班级，开始管理学生名册。'}
@@ -86,24 +102,33 @@ function HeroCTA() {
         </div>
         <div className="flex flex-wrap gap-3">
           {!classes.length ? (
-            <Button
-              size="lg"
-              onClick={async () => {
+            <ClassCreateDialog
+              onSubmit={async (d) => {
                 try {
-                  const c = await endpoints.classes.create({
-                    name: prompt('班级名称，如：初二数学火箭班') || '初二数学火箭班',
-                    grade: prompt('年级，如：初二') || '初二',
-                    subject: '数学',
-                  });
-                  push({ variant: 'success', title: '班级创建成功', description: (c as any).name });
+                  const c: any = await endpoints.classes.create(d);
+                  if (!c?.id) throw new Error('创建成功但未返回班级 ID');
+                  // 🔴 同步追加新班级到 Zustand store（ClassManager/Sidebar 都是 selector 订阅者，
+                  // store 一变立刻重渲染 → 用户看到新班级马上出现在侧栏下拉里）。
+                  // 不再依赖 refetch 的 7 步异步链路（network/cache/enabled 任一环节出错就"创建成功但不显示"）。
+                  useAppStore.setState((s) => ({
+                    classes: [...s.classes, c],
+                  }));
+                  // 新建后自动切到新班（setActiveClassId 做源头合法性校验 + 写 localStorage spark.class）
+                  setActiveClassId(c.id);
+                  // refetch 仅作为后台兜底：对齐服务端 studentCount/createdAt/teacherId 等字段，
+                  // 不 await，不阻断 UI 即时更新。
+                  qc.refetchQueries({ queryKey: ['classes'] }).catch(() => undefined);
+                  push({ variant: 'success', title: '班级创建成功', description: c.name ?? c.id });
                   router.refresh();
                 } catch (e: any) {
                   push({ variant: 'error', title: '创建失败', description: e?.message ?? '' });
                 }
               }}
             >
-              <Plus className="h-4 w-4" /> 新建第一个班级
-            </Button>
+              <Button size="lg">
+                <Plus className="h-4 w-4" /> 新建第一个班级
+              </Button>
+            </ClassCreateDialog>
           ) : null}
           <Button size="lg" variant="gold" asChild>
             <Link href="/scores">
@@ -441,5 +466,56 @@ function RecentActivityCard() {
         </ul>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * 班级创建弹窗 —— 替代原 prompt() 方案。
+ * prompt() 在 trae-preview / 部分嵌入式 webview 环境里不被支持，会直接抛
+ * 『prompt() is not supported』导致班级创建失败 → classes 为空 → 导入学生报
+ * 『请先创建班级』。改用 Dialog + Input 表单，跨环境稳定。
+ */
+function ClassCreateDialog({
+  children,
+  onSubmit,
+}: {
+  children: React.ReactNode;
+  onSubmit: (d: { name: string; grade: string; subject: string }) => Promise<unknown>;
+}) {
+  const [name, setName] = React.useState('初二数学火箭班');
+  const [grade, setGrade] = React.useState('初二');
+  const [subject, setSubject] = React.useState('数学');
+  const [open, setOpen] = React.useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{children}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader><DialogTitle>新建班级</DialogTitle></DialogHeader>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1.5 col-span-2">
+            <Label>班级名称 *</Label>
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="例：初二数学火箭班" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>年级</Label>
+            <Input value={grade} onChange={(e) => setGrade(e.target.value)} placeholder="例：初二" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>学科</Label>
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="例：数学" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)}>取消</Button>
+          <Button
+            onClick={async () => {
+              if (!name.trim()) return;
+              await onSubmit({ name: name.trim(), grade: grade.trim() || '初二', subject: subject.trim() || '数学' });
+              setOpen(false);
+            }}
+          >创建并保存</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

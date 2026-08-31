@@ -71,17 +71,36 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ classes, activeClassId: active });
   },
   setActiveClassId: (id) => {
-    if (id && typeof window !== 'undefined') window.localStorage.setItem(STORAGE_KEYS.CLASS, id);
-    set({ activeClassId: id });
+    // 【源头防御】任何地方调用 setActiveClassId(id)，若 id 不在当前真实 classes 列表里，
+    // 一律降级到 classes[0]?.id 或 null。杜绝 localStorage 残留 / 异步时序竞态
+    // 把无效 id 塞回 store → 后续请求被 ensureOwnerOr404 拦成『目标不存在』、
+    // 或写入 A 班 / 查询 B 班导致『成功但不显示』。
+    const { classes } = get();
+    const safe = id && classes.some((c) => c.id === id) ? id : classes[0]?.id ?? null;
+    if (safe && typeof window !== 'undefined') {
+      window.localStorage.setItem(STORAGE_KEYS.CLASS, safe);
+    } else if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(STORAGE_KEYS.CLASS);
+    }
+    set({ activeClassId: safe });
   },
 
   user: initialUser,
   setUser: (u) => {
+    const prev = get().user;
+    // 账号切换检测：新旧 user.id 不同（含 null→user、userA→userB）时清空班级上下文。
+    // 防止上一个账号的 classes / activeClassId 残留到新账号 —— 否则前端兜底会用旧账号的
+    // classId 发请求，后端 ensureOwnerOr404 检测到 teacherId 不匹配 → 『目标不存在』。
+    const switched = !!u && (prev?.id ?? null) !== (u.id ?? null);
     if (typeof window !== 'undefined') {
       if (u) window.localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(u));
       else window.localStorage.removeItem(STORAGE_KEYS.USER);
+      if (switched) window.localStorage.removeItem(STORAGE_KEYS.CLASS);
     }
-    set({ user: u });
+    set({
+      user: u,
+      ...(switched ? { classes: [], activeClassId: null } : {}),
+    });
   },
   accessToken: initialToken,
   setAccessToken: (t) => {
@@ -101,7 +120,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       window.localStorage.removeItem(STORAGE_KEYS.CLASS);
     }
     try { get().__queryClient?.clear(); } catch {}
-    set({ user: null, accessToken: null, activeClassId: null });
+    // logout 必须连 classes 一起清空，否则新账号登录后 store 里还残留旧账号的班级列表，
+    // 前端兜底（classes[0]?.id）会把旧 classId 发给后端 → ensureOwnerOr404 抛『目标不存在』。
+    set({ user: null, accessToken: null, activeClassId: null, classes: [] });
     // 【单点跳转】登出后必走这一条，禁止 sidebar / 守卫再额外 push/replace，
     // 否则双重 redirect 竞争会让 App Router 卡死。
     const r = get().__router;

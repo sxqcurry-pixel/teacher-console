@@ -20,6 +20,7 @@ import {
   IsNotEmpty,
   IsNumber,
   IsOptional,
+  IsEnum,
   IsString,
   Max,
   Min,
@@ -30,6 +31,7 @@ import { StudentService } from './student.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser, CurrentUserPayload } from '../../common/decorators/current-user.decorator';
 import { cuidLike } from '@shared/utils';
+import { StudentStatus } from '@shared/enums';
 import type {
   BulkImportResult,
   CreateStudentRequest,
@@ -49,9 +51,9 @@ class QueryDto {
 
 class CreateStudentDto {
   @IsOptional() @IsInt() @Min(1) serialNo?: number;
-  @IsString() @IsNotEmpty() name!: string;
+  @IsString() @IsNotEmpty() @MinLength(1) name!: string;
   @IsOptional() @IsString() remark?: string;
-  @IsOptional() @IsString() status?: string;
+  @IsOptional() @IsEnum(StudentStatus) status?: StudentStatus;
   @IsString() @IsNotEmpty() classId!: string;
 }
 

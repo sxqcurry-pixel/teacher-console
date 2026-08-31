@@ -18,6 +18,7 @@ import {
   Edit,
   FileSpreadsheet,
   Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -49,16 +50,27 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { endpoints } from '@/lib/api';
 import { useAppStore } from '@/stores/app-store';
-import { labelOf, resultColor } from '@/lib/utils';
+import { cn, labelOf, resultColor } from '@/lib/utils';
 import type { BulkImportResult, PageResult, StudentDto } from '@spark/shared';
 
 export default function StudentsPage() {
   const activeClassId = useAppStore((s) => s.activeClassId);
   const classes = useAppStore((s) => s.classes);
+  // activeClassId 合法性由 setActiveClassId / setClasses 源头保证：
+  //   有值 → 一定在 classes 里（真实班级）；无值 → 还没班级，不发请求。
+  // 不再在这里做 classes.some 冗余判断，避免时序竞态（Sidebar ClassesSyncer 异步加载时 classes 读成旧值）。
+  // queryKey 和 mutation 都统一用 activeClassId，单一真实源。
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState<string>('');
   const qc = useQueryClient();
   const push = useAppStore((s) => s.pushToast);
+
+  // —— 批量导入 Dialog + Tabs 受控状态（用户要求：导入中按钮可见 Loading/进度，导入完关 Dialog 跳学生名册 Tab）
+  const [importDialogOpen, setImportDialogOpen] = React.useState(false);
+  const [tab, setTab] = React.useState<'roster' | 'insights'>('roster');
+  const [importingFile, setImportingFile] = React.useState<File | null>(null); // 用来显示"正在导入 XXX.xlsx"
+  const [progress, setProgress] = React.useState(0); // 0~100，近似进度条
+  const rosterSectionRef = React.useRef<HTMLDivElement>(null);
 
   const { data, isLoading } = useQuery<PageResult<StudentDto>>({
     queryKey: ['students', activeClassId, keyword, status],
@@ -76,10 +88,16 @@ export default function StudentsPage() {
   });
 
   const createMut = useMutation({
-    mutationFn: (d: any) => endpoints.students.create({ classId: activeClassId!, ...d }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['students'] });
-      qc.invalidateQueries({ queryKey: ['classes'] });
+    mutationFn: async (d: any) => {
+      // activeClassId 源头保证合法（在 classes 里或 null），直接信任。
+      if (!activeClassId) {
+        throw new Error(classes.length ? '班级正在加载，请稍后再试' : '请先创建班级后再添加学生');
+      }
+      return endpoints.students.create({ classId: activeClassId, ...d });
+    },
+    onSuccess: async () => {
+      await qc.refetchQueries({ queryKey: ['students'] });
+      await qc.refetchQueries({ queryKey: ['classes'] });
       push({ variant: 'success', title: '学生已添加' });
     },
     onError: (e: any) => push({ variant: 'error', title: '添加失败', description: e.message }),
@@ -87,31 +105,71 @@ export default function StudentsPage() {
 
   const removeMut = useMutation({
     mutationFn: (id: string) => endpoints.students.remove(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['students'] }),
+    onSuccess: async () => {
+      await qc.refetchQueries({ queryKey: ['students'] });
+      await qc.refetchQueries({ queryKey: ['classes'] });
+    },
     onError: (e: any) => push({ variant: 'error', title: '删除失败', description: e.message }),
   });
 
+  // 近似进度推进：bulkImport 是单次请求，没流式进度，给用户一个"系统真在干活"的感知。
+  // 0~60% 匀速（上传 + 后端解析），停在 60% 等请求回包，成功了立刻到 100%。
+  const runProgressTimer = () => {
+    let p = 0;
+    setProgress(0);
+    const id = window.setInterval(() => {
+      p = Math.min(p + 6, 60); // 10 个 tick，~1s 到 60%
+      setProgress(p);
+      if (p >= 60) window.clearInterval(id);
+    }, 100);
+    return () => window.clearInterval(id);
+  };
+
   const importMut = useMutation({
-    // 【防御】localStorage 里可能残留旧的/已删除的 activeClassId（如 cls-demo-1），
-    // 直接传给后端会被 ensureOwnerOr404 拦成『目标不存在』。
-    // 这里在发请求前校验：如果 activeClassId 不在真实班级列表里，自动兜底用第一个班级。
-    mutationFn: (file: File) => {
-      const validClassId =
-        activeClassId && classes.some((c) => c.id === activeClassId)
-          ? activeClassId
-          : classes[0]?.id;
-      if (!validClassId) {
+    mutationFn: async (file: File) => {
+      if (!activeClassId) {
         throw new Error('请先创建班级后再导入学生');
       }
-      return endpoints.students.bulkImport(file, validClassId) as Promise<BulkImportResult>;
+      const stopTimer = runProgressTimer();
+      try {
+        const r = (await endpoints.students.bulkImport(
+          file,
+          activeClassId,
+        )) as BulkImportResult;
+        // 上传/解析完成，剩下最后 DB 写入 → 推到 90%，等 onSuccess 再到 100%
+        setProgress(90);
+        return r;
+      } finally {
+        stopTimer();
+      }
     },
-    onSuccess: (r: BulkImportResult) => {
-      qc.invalidateQueries({ queryKey: ['students'] });
+    onMutate: (file) => {
+      setImportingFile(file);
+    },
+    onSuccess: async (r: BulkImportResult) => {
+      setProgress(100);
+      // 1) 强制拉取最新 21 条学生数据
+      await qc.refetchQueries({ queryKey: ['students'] });
+      await qc.refetchQueries({ queryKey: ['classes'] });
+      // 2) 用户要求：导入成功后立刻显示学生列表
+      setTab('roster');
+      setImportDialogOpen(false);
+      // 3) 滚动到学生名册卡片顶部，让用户第一眼看到刚导入的 21 条数据
+      requestAnimationFrame(() => {
+        rosterSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
       push({
         variant: r.failCount ? 'warning' : 'success',
         title: `导入完成：成功 ${r.successCount}，失败 ${r.failCount}`,
         description: r.errors.slice(0, 3).map((e) => `第${e.row}行：${e.message}`).join('；'),
       });
+    },
+    onSettled: () => {
+      // 无论成功失败，1s 后清空进度和文件名，下次选文件重头开始
+      setTimeout(() => {
+        setImportingFile(null);
+        setProgress(0);
+      }, 800);
     },
     onError: (e: any) => push({ variant: 'error', title: '导入失败', description: e.message }),
   });
@@ -135,7 +193,7 @@ export default function StudentsPage() {
 
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="roster">
+      <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <TabsList>
             <TabsTrigger value="roster">学生名册</TabsTrigger>
@@ -162,52 +220,114 @@ export default function StudentsPage() {
                 <SelectItem value="INACTIVE">退班</SelectItem>
               </SelectContent>
             </Select>
-            <Dialog>
+
+            {/* —— 批量导入：按钮本身显示导入中进度（spinner + 文案 + 进度条）—— */}
+            <Dialog open={importDialogOpen} onOpenChange={(v) => !importMut.isPending && setImportDialogOpen(v)}>
               <DialogTrigger asChild>
-                <Button variant="outline">
-                  <Upload className="h-4 w-4" /> 批量导入
+                <Button variant="outline" disabled={importMut.isPending} className="min-w-[140px]">
+                  {importMut.isPending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      正在导入…
+                      <span className="ml-1 text-[10px] text-muted-foreground tabular">{progress}%</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="h-4 w-4" /> 批量导入
+                    </>
+                  )}
                 </Button>
               </DialogTrigger>
-              <DialogContent>
+              <DialogContent onInteractOutside={(e) => importMut.isPending && e.preventDefault()}>
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2"><FileSpreadsheet className="h-5 w-5 text-primary" /> 批量导入学生</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <p className="text-sm text-muted-foreground">
                     支持 <span className="text-primary font-medium">.xlsx / .xls / .csv</span>。
                     Excel 第一行读取中文列名：<b>序号</b> / <b>姓名</b> / <b>备注</b> / <b>状态</b>。若没有序号会自动分配。
                   </p>
-                  <Label className="spark-eyebrow">选择文件</Label>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.csv"
-                    className="block w-full text-sm file:mr-4 file:h-9 file:px-4 file:rounded-md file:border-0 file:bg-primary file:text-primary-foreground file:cursor-pointer hover:file:brightness-110"
-                    onChange={(e) => {
-                      const f = e.target.files?.[0];
-                      if (f) importMut.mutateAsync(f);
-                    }}
-                  />
+
+                  {/* 导入中进度信息卡（选中文件后立即出现） */}
+                  {(importMut.isPending || progress > 0) && importingFile && (
+                    <Card className="border-primary/30 bg-primary/5">
+                      <CardContent className="p-3 space-y-2">
+                        <div className="flex items-center gap-2 text-sm">
+                          <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />
+                          <span className="font-medium truncate">正在导入：{importingFile.name}</span>
+                          <span className="ml-auto tabular text-xs text-muted-foreground">
+                            {(importingFile.size / 1024).toFixed(1)} KB
+                          </span>
+                        </div>
+                        <div className="h-2 w-full rounded-full bg-border overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-300 transition-[width] duration-100 ease-linear"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+                        <div className="text-[11px] text-muted-foreground tabular">
+                          {progress < 100
+                            ? `${progress}% — 上传并解析 Excel…请稍等，不要关闭此窗口`
+                            : `✓ 完成（100%）— 正在同步列表…`}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  <div className="space-y-2">
+                    <Label className="spark-eyebrow">选择文件</Label>
+                    <input
+                      type="file"
+                      accept=".xlsx,.xls,.csv"
+                      disabled={importMut.isPending}
+                      className={cn(
+                        'block w-full text-sm file:mr-4 file:h-9 file:px-4 file:rounded-md file:border-0 file:bg-primary file:text-primary-foreground hover:file:brightness-110',
+                        importMut.isPending ? 'opacity-60 cursor-not-allowed file:cursor-not-allowed' : 'file:cursor-pointer',
+                      )}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) {
+                          if (!activeClassId) {
+                            push({ variant: 'error', title: '请先创建班级', description: '去左侧⚙管理班级新建一个班。' });
+                            return;
+                          }
+                          // 用 mutate 而非 mutateAsync：mutationFn throw 时走 onError（toast 提示），
+                          // 不会变成 Unhandled Runtime Error 把整页炸红。
+                          importMut.mutate(f);
+                          // 清空 input value，允许用户下次重新选择同一个文件再次导入
+                          e.currentTarget.value = '';
+                        }
+                      }}
+                    />
+                  </div>
                   <p className="text-xs text-muted-foreground">💡 你也可以在学生中心 / 成绩登记页继续快速手动录入单条。</p>
                 </div>
-                <DialogFooter>
-                  <Link href="/scores" className="text-xs text-primary hover:underline mr-auto">
+                <DialogFooter className="!justify-between">
+                  <Link href="/scores" className="text-xs text-primary hover:underline">
                     去成绩登记 →
                   </Link>
+                  {importMut.isPending && (
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground tabular">
+                      <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                      导入中… {progress}%
+                    </div>
+                  )}
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+
             <Button variant="outline" onClick={exportCsv} disabled={!data?.items.length}>
               <Download className="h-4 w-4" /> 导出 Excel
             </Button>
             <StudentCreateDialog onSubmit={(d) => createMut.mutateAsync(d)}>
-              <Button>
+              <Button disabled={!activeClassId || createMut.isPending}>
                 <UserPlus className="h-4 w-4" /> 新增学生
               </Button>
             </StudentCreateDialog>
           </div>
         </div>
 
-        <TabsContent value="roster">
+        <TabsContent value="roster" ref={rosterSectionRef}>
           <Card>
             <CardContent className="p-0">
               <div className="overflow-x-auto">

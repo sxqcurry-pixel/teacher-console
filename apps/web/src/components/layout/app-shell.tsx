@@ -4,9 +4,13 @@ import React, { useEffect, useRef } from 'react';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
-import { Header } from './header';
+// Header / Sidebar 都用 dynamic ssr:false — 避免 localStorage 条件渲染导致的 Hydration mismatch
+const HeaderCSR = dynamic(() => import('./header').then((m) => m.Header), {
+  ssr: false,
+  loading: () => <header className="h-14 shrink-0 border-b border-border/50 bg-card/30" aria-hidden />,
+});
 import { useAppStore } from '@/stores/app-store';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { endpoints } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
@@ -38,7 +42,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const qc = useQueryClient();
-  const user = useAppStore((s) => s.user);
   const setUser = useAppStore((s) => s.setUser);
   const setToken = useAppStore((s) => s.setAccessToken);
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
@@ -98,6 +101,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // 页面切换时 React 会真正销毁旧组件再重新构造新组件，不会有跨页面的副作用残留。
   return (
     <div className="relative z-10 min-h-screen w-full">
+      {/* 【统一 Classes 数据源：CSR-only 组件，避免 SSR 水合报错】
+          实现思路：把 classes 查询从 Sidebar 升顶到 AppShell，但 AppShell 本身是 SSR-able 的，
+          直接在顶层 useQuery 会因 SSR(enabled=false) vs CSR(enabled=true) fiber 内部状态不一致
+          触发 React hydration failed。用 mounted useEffect 守卫：SSR/hydration 首帧返回 null，
+          React 不挂任何 useQuery → 两端渲染完全一致；客户端 hydrated 后再挂载查询。*/}
+      <ClassesSyncer />
       <Sidebar />
       <div
         className={cn(
@@ -105,7 +114,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           sidebarOpen ? 'md:pl-72' : 'md:pl-0',
         )}
       >
-        <Header />
+        <HeaderCSR />
         <main className="relative flex-1 px-4 py-6 md:px-8 md:py-8 max-w-[1500px] w-full mx-auto">
           {/* 🔴 强制 remount 防护：以 path 为 key，每次路由变化都会完全销毁上一个页面的组件树，
                  杜绝上一页的 IO / motion 调度器 / pending useEffect 回调残留到下一页 */}
@@ -184,4 +193,54 @@ function MobileBottomNav() {
       </ul>
     </nav>
   );
+}
+
+/**
+ * ClassesSyncer — AppShell 的 Classes 统一数据源（纯客户端渲染，不参与 SSR）。
+ *
+ * 为什么不能直接放在 AppShell 顶层？
+ *   Zustand initialUser 在模块加载时同步读 localStorage：SSR 阶段 window=undefined → initialUser=null，
+ *   客户端 hydration 阶段 window 存在 → 读到历史登录用户。
+ *   这导致 `useQuery({ enabled: !!user })` 在 SSR 时 =false、在 CSR hydration 时 =true，
+ *   React Query 在 fiber 上挂的内部状态（fetchStatus/observer flags）两端不一致 → React 抛 hydration mismatch。
+ *
+ * 解决方案：组件首帧（SSR + CSR hydration）通过 mounted===false 返回 null，不调用任何 hooks，
+ *   两端输出完全一致。useEffect 在客户端 mounted 后置 true → 下一帧再渲染真正的 useQuery
+ *   （此时已完成 hydration，React 不再比对 SSR HTML），彻底规避水合差异。
+ *
+ * 为什么要把 classes 查询从 Sidebar 升顶？
+ *   Sidebar 用 dynamic ssr:false，异步加载时机不确定（比 StudentsPage/Dashboard 更晚），
+ *   在它的 useQuery onSuccess 之前，store.classes 仍是上一个账号残留或空 → 导入兜底
+ *   写到旧账号班级 → 几秒后 Sidebar setClasses 覆盖 activeClassId → 写入 A 班查询 B 班。
+ *   ClassesSyncer 在 AppShell 顶层、在 Sidebar/页面 children 之前挂载，保证 store.classes
+ *   永远是当前账号的真实数据；Sidebar 只负责渲染，不再自己写 setClasses（避免竞争覆盖）。
+ */
+function ClassesSyncer() {
+  const [mounted, setMounted] = React.useState(false);
+  const user = useAppStore((s) => s.user);
+  const setClasses = useAppStore((s) => s.setClasses);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useQuery({
+    // 用 mounted+user.id 作 key：两端完全不同，但首帧因为 mounted=false 不执行查询（enabled=false），
+    // 不会出现 SSR vs CSR 各自挂不同 fiber 状态的问题。
+    queryKey: ['classes', user?.id],
+    queryFn: async () => {
+      try {
+        const list = (await endpoints.classes.list()) as any[];
+        setClasses(list); // 唯一写入点：净化 activeClassId + 写 Zustand + localStorage
+        return list;
+      } catch {
+        setClasses([]);
+        return [];
+      }
+    },
+    enabled: mounted && !!user,
+    refetchOnWindowFocus: false,
+  });
+
+  return null;
 }
