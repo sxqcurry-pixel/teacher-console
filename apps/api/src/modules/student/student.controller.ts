@@ -21,9 +21,9 @@ import {
   IsNumber,
   IsOptional,
   IsString,
-  IsUUID,
   Max,
   Min,
+  MinLength,
 } from 'class-validator';
 import * as XLSX from 'xlsx';
 import { StudentService } from './student.service';
@@ -67,9 +67,12 @@ class UpdateStudentDto {
  * 前端 classId 有两种传法（URL query 或 multipart body），本 DTO 都支持，避免前后端传参位置不一致导致 400。
  *   - 方式 1：URL query ?classId=xxx          → @Query() 校验
  *   - 方式 2：FormData fd.append('classId')   → @Body() 校验（api.upload() 封装的真实行为）
+ *
+ * ⚠️ 不要加 @IsUUID('4')：本项目所有 id 都是 cuid (prefix + base36 + 随机)，不是 UUID。
+ *    比如 cmtgzeqf20003oi02ke3lz5jg、cls-xxx 都是合法 classId，UUID 校验会把它们都拦掉。
  */
 class BulkImportClassIdDto {
-  @IsOptional() @IsString() @IsUUID('4') classId?: string;
+  @IsOptional() @IsString() @IsNotEmpty() @MinLength(4) classId?: string;
 }
 
 @ApiTags('Students')

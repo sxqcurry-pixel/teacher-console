@@ -130,6 +130,9 @@ export function Sidebar() {
     queryFn: async () => {
       try {
         const list = await endpoints.classes.list();
+        // setClasses 内部已经做了 localStorage 净化 + activeClassId 兜底：
+        //   如果缓存的 activeClassId 不在新班级列表里 → 自动切到第一个班级 id（或 null 空列表）
+        //   并且写回 localStorage。所以这里不需要再手动 setActiveClassId 一次。
         setClasses(list as any);
         return list;
       } catch {
