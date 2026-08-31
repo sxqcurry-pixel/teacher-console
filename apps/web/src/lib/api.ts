@@ -32,10 +32,8 @@ class ApiClient {
       if (token) config.headers.Authorization = `Bearer ${token}`;
       // 浏览器 FormData：禁止任何手动 Content-Type，交给浏览器自动写 multipart/form-data; boundary=----xxx
       if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
-        // @ts-expect-error delete Content-Type case-insensitively
-        delete config.headers?.['Content-Type'];
-        // @ts-expect-error lower-case too
-        delete config.headers?.['content-type'];
+        delete (config.headers as Record<string, unknown> | undefined)?.['Content-Type'];
+        delete (config.headers as Record<string, unknown> | undefined)?.['content-type'];
         return config;
       }
       // 文本/对象 body：默认 JSON；如果调用方已经明确设了 Content-Type 就尊重
@@ -94,13 +92,33 @@ class ApiClient {
     return raw ? (res.data as unknown as T) : res.data.data;
   }
 
-  async upload<T>(url: string, file: File, fields: Record<string, string> = {}): Promise<T> {
+  async upload<T>(
+    url: string,
+    file: File,
+    fields: Record<string, string> = {},
+    params?: Record<string, string | number | boolean | undefined>,
+  ): Promise<T> {
     const fd = new FormData();
     fd.append('file', file);
     Object.entries(fields).forEach(([k, v]) => fd.append(k, v));
     // ⚠️ 不要手动设置 Content-Type: multipart/form-data！
     // 浏览器会自动补全 boundary=----WebKitFormBoundaryXXX，手写会丢 boundary → 后端 multer 解析失败。
-    const res = await this.instance.post<ApiResponse<T>>(url, fd);
+    // 同时为了避免后端接口只认 query 不认 body（@Query classId），把 fields 里的字段也塞到 URL query（双保险）。
+    const safeParams: Record<string, string> = {};
+    if (params) {
+      for (const [k, v] of Object.entries(params)) {
+        if (v !== undefined && v !== null && v !== '') safeParams[k] = String(v);
+      }
+    }
+    for (const [k, v] of Object.entries(fields)) {
+      if (safeParams[k] === undefined && v !== undefined && v !== null && v !== '') safeParams[k] = v;
+    }
+    const search = Object.entries(safeParams)
+      .filter(([_, v]) => v !== undefined && v !== null && v !== '')
+      .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+      .join('&');
+    const finalUrl = search ? `${url}${url.includes('?') ? '&' : '?'}${search}` : url;
+    const res = await this.instance.post<ApiResponse<T>>(finalUrl, fd);
     return res.data.data;
   }
 

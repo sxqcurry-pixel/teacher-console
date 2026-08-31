@@ -21,6 +21,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   Min,
 } from 'class-validator';
@@ -59,6 +60,16 @@ class UpdateStudentDto {
   @IsOptional() @IsString() @IsNotEmpty() name?: string;
   @IsOptional() @IsString() remark?: string;
   @IsOptional() @IsString() status?: string;
+}
+
+/**
+ * 批量导入 classId 兼容 DTO：
+ * 前端 classId 有两种传法（URL query 或 multipart body），本 DTO 都支持，避免前后端传参位置不一致导致 400。
+ *   - 方式 1：URL query ?classId=xxx          → @Query() 校验
+ *   - 方式 2：FormData fd.append('classId')   → @Body() 校验（api.upload() 封装的真实行为）
+ */
+class BulkImportClassIdDto {
+  @IsOptional() @IsString() @IsUUID('4') classId?: string;
 }
 
 @ApiTags('Students')
@@ -105,7 +116,8 @@ export class StudentController {
   @ApiConsumes('multipart/form-data')
   async bulkImport(
     @CurrentUser() u: CurrentUserPayload,
-    @Query('classId') classId: string,
+    @Query() q: BulkImportClassIdDto,
+    @Body() body: BulkImportClassIdDto,
     @UploadedFile(
       new ParseFilePipeBuilder()
         // 【修复 1/3】Nest 默认 FileTypeValidator 只匹配 file.mimetype，
@@ -134,6 +146,13 @@ export class StudentController {
     )
     file: Express.Multer.File,
   ): Promise<BulkImportResult> {
+    // 【修复 3/3：前后端 classId 传参位置不一致】
+    //   - query 有值时用 query（推荐）；否则用 body（前端 upload() 封装 FormData body 传法）
+    //   - 两种都没值时抛中文提示，避免用户看到 ValidationPipe 通用的「数据校验失败」不知道哪错了
+    const classId = (q?.classId?.length ? q.classId : undefined) ?? (body?.classId?.length ? body.classId : undefined);
+    if (!classId) {
+      throw new (await import('@nestjs/common')).BadRequestException('请先选择班级再导入学生');
+    }
     const wb = XLSX.read(file.buffer, { type: 'buffer' });
     const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]!]!, {
       defval: '',

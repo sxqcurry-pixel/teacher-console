@@ -67,9 +67,11 @@ async function handler(
       method,
       headers,
       body,
-      duplex: hasBody && isMultipart && req.body ? 'half' : undefined,
+      // duplex 是 undici / Node fetch 的扩展属性，TypeScript DOM RequestInit 类型未包含，用 as any 绕过。
+      // 只有 multipart body 是 ReadableStream 时才需要设为 'half'；其他请求留空。
+      ...((hasBody && isMultipart && req.body ? { duplex: 'half' as any } : null)),
       cache: 'no-store',
-    });
+    } satisfies Parameters<typeof fetch>[1]);
     const text = await upstream.text();
     return new NextResponse(text, {
       status: upstream.status,

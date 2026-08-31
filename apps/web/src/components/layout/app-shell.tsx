@@ -2,13 +2,29 @@
 
 import React, { useEffect, useRef } from 'react';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
 import { usePathname, useRouter } from 'next/navigation';
-import { Sidebar } from './sidebar';
 import { Header } from './header';
 import { useAppStore } from '@/stores/app-store';
 import { useQueryClient } from '@tanstack/react-query';
 import { endpoints } from '@/lib/api';
 import { cn } from '@/lib/utils';
+
+/**
+ * Sidebar 客户端渲染（完全禁用 SSR）
+ *
+ * Sidebar 里大量使用 localStorage（getActiveClassId/setActiveClassId/remember tokens） +
+ * 班级 Select placeholder 随缓存数据变化 —— SSR 拿不到 localStorage，所以第一次渲染时服务端
+ * 输出的是 placeholder 文本，而客户端 Hydrate 时马上有了缓存内容 → 两端 HTML 不一致
+ * → React 抛 Hydration mismatch 红框 → Next 会取消正在加载的 _rsc payload（ERR_ABORTED）→ App Router
+ *  后续的 layout-router 状态异常。用 dynamic ssr:false 让 Sidebar 只在客户端渲染，直接消除这类不一致。
+ */
+const Sidebar = dynamic(() => import('./sidebar').then((m) => m.Sidebar), {
+  ssr: false,
+  loading: () => (
+    <aside className="hidden lg:flex w-72 shrink-0 flex-col border-r border-border/50 bg-card/30" aria-hidden />
+  ),
+});
 
 /**
  * AppShell — responsive PC/Mobile wrapper.
