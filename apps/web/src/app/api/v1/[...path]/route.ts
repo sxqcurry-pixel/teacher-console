@@ -27,18 +27,28 @@ async function handler(
 
   const method = req.method.toUpperCase();
   const hasBody = !['GET', 'HEAD'].includes(method);
-  const isMultipart = (req.headers.get('content-type') || '').toLowerCase().includes('multipart/form-data');
-  // 【修复 xlsx 导入 Unsupported ZIP file】
-  // 所有请求体必须按字节级透传，绝不能用 req.text() 做 UTF-8 解码：
-  //   - multipart/form-data 里 xlsx 是 ZIP 二进制，UTF-8 解码会替换非法字节 → ZIP 损坏 → XLSX 解析报错 Unsupported ZIP file
-  //   - application/json 也应该按字节传（避免不必要的编解码性能损耗 + BOM 等兼容）
-  let body: ArrayBuffer | Uint8Array | string | undefined;
+  const contentType = req.headers.get('content-type') || '';
+  const isMultipart = contentType.toLowerCase().includes('multipart/form-data');
+  // 【修复 File is required + Unsupported ZIP file 终极版】
+  // multipart/form-data 的上传链路：
+  //   1) 不能 req.text() / req.arrayBuffer() 后再 Uint8Array 传 fetch
+  //      → Node/undici 会把 body 当成 application/octet-stream 推断，丢掉原始 Content-Type 里的 boundary=----... 参数
+  //      → multer 不知道是 multipart → file 字段丢失 → Nest 抛 "File is required"
+  //   2) 也不能 text() UTF-8 解码：xlsx 是 ZIP 字节，非法字节被替换 → "Unsupported ZIP file"
+  //
+  // 终极正确做法：直接把 req.body（ReadableStream）作为 body 透传，
+  // 并手动重设 header['content-type'] = 浏览器原始带来的值（大小写 boundary 完全一致），
+  // 同时加上 duplex: 'half'（stream body 必需）。这样 undici 不会做任何编码/推断，字节级 100% 保真。
+  let body: BodyInit | undefined;
   if (hasBody && isMultipart) {
-    // 二进制文件上传：传字节，保证与浏览器发送的 multipart payload 字节级一致。
-    const raw = await req.arrayBuffer();
-    body = raw.byteLength ? new Uint8Array(raw) : undefined;
+    // 二进制文件上传：流式透传，字节 100% 一致 + boundary 一字不改
+    if (req.body) {
+      body = req.body as unknown as BodyInit;
+      // 显式再塞一遍：确保 fetch 不会重写/覆盖 boundary
+      headers.set('content-type', contentType);
+    }
   } else if (hasBody) {
-    // JSON 等文本型 body：保持 text 兼容（和之前行为一致）
+    // JSON 等文本型 body：保持 text 兼容
     const t = await req.text();
     body = t && t.length ? t : undefined;
   }
@@ -47,9 +57,8 @@ async function handler(
     const upstream = await fetch(target, {
       method,
       headers,
-      body: body as any,
-      // SSE 流式需要禁用缓冲时可在此扩展；当前登录/CRUD 用普通请求即可
-      duplex: body instanceof Uint8Array ? 'half' : undefined,
+      body,
+      duplex: hasBody && isMultipart && req.body ? 'half' : undefined,
       cache: 'no-store',
     });
     const text = await upstream.text();
