@@ -54,6 +54,7 @@ import type { BulkImportResult, PageResult, StudentDto } from '@spark/shared';
 
 export default function StudentsPage() {
   const activeClassId = useAppStore((s) => s.activeClassId);
+  const classes = useAppStore((s) => s.classes);
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState<string>('');
   const qc = useQueryClient();
@@ -91,7 +92,19 @@ export default function StudentsPage() {
   });
 
   const importMut = useMutation({
-    mutationFn: (file: File) => endpoints.students.bulkImport(file, activeClassId!) as Promise<BulkImportResult>,
+    // 【防御】localStorage 里可能残留旧的/已删除的 activeClassId（如 cls-demo-1），
+    // 直接传给后端会被 ensureOwnerOr404 拦成『目标不存在』。
+    // 这里在发请求前校验：如果 activeClassId 不在真实班级列表里，自动兜底用第一个班级。
+    mutationFn: (file: File) => {
+      const validClassId =
+        activeClassId && classes.some((c) => c.id === activeClassId)
+          ? activeClassId
+          : classes[0]?.id;
+      if (!validClassId) {
+        throw new Error('请先创建班级后再导入学生');
+      }
+      return endpoints.students.bulkImport(file, validClassId) as Promise<BulkImportResult>;
+    },
     onSuccess: (r: BulkImportResult) => {
       qc.invalidateQueries({ queryKey: ['students'] });
       push({
