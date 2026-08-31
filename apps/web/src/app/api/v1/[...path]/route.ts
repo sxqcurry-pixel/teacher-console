@@ -29,6 +29,15 @@ async function handler(
   const hasBody = !['GET', 'HEAD'].includes(method);
   const contentType = req.headers.get('content-type') || '';
   const isMultipart = contentType.toLowerCase().includes('multipart/form-data');
+  // 【调试/版本标识 v3】dev 环境下打印路由命中版本，便于判断是否仍跑旧代码（旧代码会造成 File is required / Unsupported ZIP）
+  if (process.env.NODE_ENV !== 'production') {
+    const pathDisplay = `${method} /${(ctx.params.path ?? []).join('/')}${req.nextUrl.search || ''}`;
+    if (isMultipart) {
+      console.log(`[PROXY_v3_stream] HIT multipart → ${pathDisplay}   content-type=${contentType.slice(0, 80)}`);
+    } else {
+      console.log(`[PROXY_v3_stream] HIT → ${pathDisplay}`);
+    }
+  }
   // 【修复 File is required + Unsupported ZIP file 终极版】
   // multipart/form-data 的上传链路：
   //   1) 不能 req.text() / req.arrayBuffer() 后再 Uint8Array 传 fetch
